@@ -1,0 +1,228 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Anki-like German Flashcard App Design System
+   Scholarly aesthetic with warm accents for focus and learning
+*/
+
+@layer base {
+  :root {
+    /* Base colors - warm paper-like light theme */
+    --background: 40 20% 98%;
+    --foreground: 220 25% 12%;
+
+    --card: 40 15% 99%;
+    --card-foreground: 220 25% 12%;
+
+    --popover: 40 15% 99%;
+    --popover-foreground: 220 25% 12%;
+
+    /* Primary - deep scholarly navy */
+    --primary: 220 60% 20%;
+    --primary-foreground: 40 20% 98%;
+
+    /* Secondary - warm cream */
+    --secondary: 40 30% 94%;
+    --secondary-foreground: 220 25% 20%;
+
+    /* Muted - subtle warm gray */
+    --muted: 40 15% 92%;
+    --muted-foreground: 220 15% 45%;
+
+    /* Accent - warm amber/gold for highlights */
+    --accent: 35 90% 55%;
+    --accent-foreground: 220 25% 12%;
+
+    /* Destructive - warm red */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 40 20% 98%;
+
+    /* Borders and inputs */
+    --border: 40 20% 88%;
+    --input: 40 20% 88%;
+    --ring: 220 60% 35%;
+
+    --radius: 0.625rem;
+
+    /* Sidebar */
+    --sidebar-background: 40 25% 96%;
+    --sidebar-foreground: 220 25% 25%;
+    --sidebar-primary: 220 60% 20%;
+    --sidebar-primary-foreground: 40 20% 98%;
+    --sidebar-accent: 35 50% 90%;
+    --sidebar-accent-foreground: 220 25% 15%;
+    --sidebar-border: 40 20% 88%;
+    --sidebar-ring: 220 60% 35%;
+
+    /* Custom semantic colors for SRS */
+    --srs-again: 0 72% 51%;
+    --srs-hard: 25 95% 53%;
+    --srs-good: 142 71% 45%;
+    --srs-easy: 217 91% 60%;
+    
+    --srs-new: 217 91% 60%;
+    --srs-learning: 25 95% 53%;
+    --srs-review: 142 71% 45%;
+    
+    /* Card flip transition */
+    --card-flip-duration: 0.4s;
+  }
+
+  .dark {
+    /* Dark mode - warm dark theme for night study sessions */
+    --background: 220 25% 8%;
+    --foreground: 40 15% 95%;
+
+    --card: 220 25% 11%;
+    --card-foreground: 40 15% 95%;
+
+    --popover: 220 25% 11%;
+    --popover-foreground: 40 15% 95%;
+
+    --primary: 35 85% 55%;
+    --primary-foreground: 220 25% 8%;
+
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 40 15% 90%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 40 10% 55%;
+
+    --accent: 35 85% 55%;
+    --accent-foreground: 220 25% 8%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 40 15% 95%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 20%;
+    --ring: 35 85% 55%;
+
+    --sidebar-background: 220 25% 10%;
+    --sidebar-foreground: 40 15% 90%;
+    --sidebar-primary: 35 85% 55%;
+    --sidebar-primary-foreground: 220 25% 8%;
+    --sidebar-accent: 220 20% 16%;
+    --sidebar-accent-foreground: 40 15% 95%;
+    --sidebar-border: 220 20% 18%;
+    --sidebar-ring: 35 85% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  h1, h2, h3 {
+    font-family: 'Merriweather', Georgia, serif;
+  }
+}
+
+@layer components {
+  /* Flashcard specific styles */
+  .flashcard-container {
+    @apply relative w-full max-w-lg mx-auto;
+    perspective: 1000px;
+  }
+  
+  .flashcard {
+    @apply relative w-full transition-transform duration-500;
+    transform-style: preserve-3d;
+  }
+  
+  .flashcard.flipped {
+    transform: rotateY(180deg);
+  }
+  
+  .flashcard-face {
+    @apply absolute inset-0 w-full rounded-2xl shadow-lg p-8;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  
+  .flashcard-front {
+    @apply bg-card border border-border;
+  }
+  
+  .flashcard-back {
+    @apply bg-card border border-border;
+    transform: rotateY(180deg);
+  }
+  
+  /* German word highlight */
+  .german-word {
+    @apply font-serif text-3xl md:text-4xl font-bold text-primary;
+  }
+  
+  .english-word {
+    @apply font-sans text-xl md:text-2xl font-medium text-foreground;
+  }
+  
+  .example-sentence {
+    @apply text-muted-foreground italic;
+  }
+  
+  /* Rating buttons */
+  .rating-btn {
+    @apply flex-1 py-4 px-3 rounded-xl font-semibold text-white transition-all duration-200;
+    @apply hover:scale-105 active:scale-95 shadow-md;
+  }
+  
+  .rating-btn-again {
+    background-color: hsl(var(--srs-again));
+  }
+  
+  .rating-btn-hard {
+    background-color: hsl(var(--srs-hard));
+  }
+  
+  .rating-btn-good {
+    background-color: hsl(var(--srs-good));
+  }
+  
+  .rating-btn-easy {
+    background-color: hsl(var(--srs-easy));
+  }
+  
+  /* Stats badges */
+  .stat-badge-new {
+    @apply bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400;
+  }
+  
+  .stat-badge-learning {
+    @apply bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400;
+  }
+  
+  .stat-badge-review {
+    @apply bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400;
+  }
+  
+  .stat-badge-due {
+    @apply bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400;
+  }
+  
+  /* Smooth page transitions */
+  .page-transition {
+    @apply animate-in fade-in slide-in-from-bottom-4 duration-300;
+  }
+  
+  /* Folder/deck cards hover effect */
+  .deck-card {
+    @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
