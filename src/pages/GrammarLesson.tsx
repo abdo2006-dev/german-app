@@ -148,19 +148,10 @@ export default function GrammarLesson() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="prose prose-sm max-w-none text-foreground">
-                {typeof lessonContent === 'string' ? (
-                  <p className="text-sm leading-relaxed">{lessonContent}</p>
-                ) : (
-                  <div className="space-y-3">
-                    {Array.isArray(lessonContent) ? lessonContent.map((item: string, i: number) => (
-                      <div key={i} className="text-sm leading-relaxed border-l-2 border-primary/30 pl-3">{item}</div>
-                    )) : (
-                      <p className="text-sm">{JSON.stringify(lessonContent)}</p>
-                    )}
-                  </div>
-                )}
-              </div>
+              <div
+                className="prose prose-sm max-w-none text-foreground prose-headings:font-semibold prose-headings:text-foreground prose-table:text-sm prose-td:py-1.5 prose-td:px-3 prose-th:py-1.5 prose-th:px-3"
+                dangerouslySetInnerHTML={{ __html: typeof lessonContent === 'string' ? lessonContent : String(lessonContent) }}
+              />
             </CardContent>
           </Card>
         )}
