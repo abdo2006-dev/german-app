@@ -13,13 +13,20 @@ import type { Card as CardType, Rating } from "@/types/flashcard";
 
 type QueueEntry = { cardId: string; isNew: boolean };
 
+const ratingButtonClasses: Record<Rating, string> = {
+  again: "rating-btn-again",
+  hard: "rating-btn-hard",
+  good: "rating-btn-good",
+  easy: "rating-btn-easy",
+};
+
 export default function Review() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const deckIdsParam = searchParams.get("deckIds");
   const selectedDeckIds = useMemo(() => (deckIdsParam ? deckIdsParam.split(",") : []), [deckIdsParam]);
 
-  const { decks, cards, reviewCard, buryCard, getNewCardsForSession, markNewCardIntroduced } = useFlashcardStore();
+  const { decks, cards, reviewCard, buryCard, markNewCardIntroduced } = useFlashcardStore();
 
   const [seed, setSeed] = useState(() => Date.now());
   const [queue, setQueue] = useState<QueueEntry[]>([]);
@@ -52,12 +59,13 @@ export default function Review() {
    * New cards are interleaved after every 5 due cards to avoid front-loading.
    */
   const buildSessionQueue = useCallback((now: Date): QueueEntry[] => {
-    const dueItems = buildDueQueue(cards, scope, now, seed).map(i => ({ cardId: i.cardId, isNew: false }));
+    const state = useFlashcardStore.getState();
+    const dueItems = buildDueQueue(state.cards, scope, now, seed).map(i => ({ cardId: i.cardId, isNew: false }));
 
     // Gather new cards for each deck
     const newItems: QueueEntry[] = [];
     for (const deckId of selectedDeckIds) {
-      const newCards = getNewCardsForSession(deckId);
+      const newCards = state.getNewCardsForSession(deckId);
       for (const c of newCards) newItems.push({ cardId: c.id, isNew: true });
     }
 
@@ -69,7 +77,7 @@ export default function Review() {
       if (ni < newItems.length) result.push(newItems[ni++]);
     }
     return result;
-  }, [cards, scope, seed, selectedDeckIds, getNewCardsForSession]);
+  }, [scope, seed, selectedDeckIds]);
 
   const pickNext = useCallback((now: Date) => {
     const q = buildSessionQueue(now);
@@ -82,7 +90,7 @@ export default function Review() {
     }
 
     // Check if there are learning cards coming up soon
-    const nextLearning = getNextLearningDueAt(cards, scope, now);
+    const nextLearning = getNextLearningDueAt(useFlashcardStore.getState().cards, scope, now);
     if (nextLearning) {
       setCurrentCardId(null);
       setQueue([]);
@@ -94,7 +102,7 @@ export default function Review() {
     setQueue([]);
     setWaitingUntil(null);
     setIsComplete(true);
-  }, [buildSessionQueue, cards, scope]);
+  }, [buildSessionQueue, scope]);
 
   // Initialize
   useEffect(() => {
@@ -132,8 +140,7 @@ export default function Review() {
     setRevealed(false);
     startTime.current = Date.now();
     setSeed(s => s + 1);
-    // Small delay so store can update before we re-query
-    setTimeout(() => pickNext(new Date()), 50);
+    pickNext(new Date());
   }, [currentCard, reviewCard, markNewCardIntroduced, pickNext]);
 
   const handleBury = useCallback(() => {
@@ -317,7 +324,7 @@ export default function Review() {
             <button
               key={r}
               onClick={() => handleRate(r)}
-              className={cn("rating-btn flex flex-col items-center gap-0.5", `rating-btn-${r}`)}
+              className={cn("rating-btn flex flex-col items-center gap-0.5", ratingButtonClasses[r])}
             >
               <span className="text-sm font-medium capitalize">{r}</span>
               <span className="text-xs opacity-70">{intervals[r]}</span>

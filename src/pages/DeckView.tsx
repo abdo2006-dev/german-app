@@ -52,12 +52,14 @@ export default function DeckView() {
     updateCard, 
     deleteCard,
     suspendCard,
-    updateDeck
+    updateDeck,
+    getNewCardsForSession
   } = useFlashcardStore();
 
   const deck = decks.find(d => d.id === deckId);
   const deckCards = cards.filter(c => c.deckId === deckId);
   const stats = deck ? getDeckStats(deck.id) : null;
+  const newCardsAvailable = deck ? getNewCardsForSession(deck.id).length : 0;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
@@ -196,11 +198,11 @@ export default function DeckView() {
           </Button>
         </Link>
         
-        {stats.dueCount > 0 && (
+        {(stats.dueCount > 0 || newCardsAvailable > 0) && (
           <Link to={`/review?deckIds=${deck.id}`}>
             <Button className="gap-2">
               <Play className="h-4 w-4" />
-              Review ({stats.dueCount} due)
+              Study ({stats.dueCount > 0 ? `${stats.dueCount} due` : `${newCardsAvailable} new`})
             </Button>
           </Link>
         )}
