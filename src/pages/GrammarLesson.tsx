@@ -7,8 +7,37 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, CheckCircle, XCircle, ArrowRight, RotateCcw, BookOpen, PenLine, Lightbulb, Trophy } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, ArrowRight, RotateCcw, BookOpen, PenLine, Lightbulb, Trophy, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { GrammarQuestion } from '@/data/grammar';
+
+const difficultyOrder: Record<GrammarQuestion['difficulty'], number> = {
+  easy: 0,
+  medium: 1,
+  hard: 2,
+};
+
+function orderQuestionsForExamRamp(questions: GrammarQuestion[]): GrammarQuestion[] {
+  const withIndex = questions.map((question, index) => ({ question, index }));
+  const easyWarmup = withIndex.filter((item) => item.question.difficulty === 'easy').slice(0, 5);
+  const warmupIds = new Set(easyWarmup.map((item) => item.question.id));
+  const warmup = easyWarmup.length >= 5
+    ? easyWarmup
+    : [
+        ...easyWarmup,
+        ...withIndex
+          .filter((item) => !warmupIds.has(item.question.id))
+          .sort((a, b) => difficultyOrder[a.question.difficulty] - difficultyOrder[b.question.difficulty] || a.index - b.index)
+          .slice(0, 5 - easyWarmup.length),
+      ];
+
+  const usedIds = new Set(warmup.map((item) => item.question.id));
+  const ramp = withIndex
+    .filter((item) => !usedIds.has(item.question.id))
+    .sort((a, b) => difficultyOrder[a.question.difficulty] - difficultyOrder[b.question.difficulty] || a.index - b.index);
+
+  return [...warmup, ...ramp].map((item) => item.question);
+}
 
 export default function GrammarLesson() {
   const { lessonId } = useParams<{ lessonId: string }>();
@@ -24,10 +53,18 @@ export default function GrammarLesson() {
 
   const lessonContent = lessonId ? lessonContentMap[lessonId] : undefined;
   const prevProgress = lesson ? getProgress(lesson.id) : undefined;
-  const questions = lesson?.questions ?? [];
+  const questions = useMemo(() => orderQuestionsForExamRamp(lesson?.questions ?? []), [lesson]);
+  const difficultyCounts = useMemo(() => questions.reduce(
+    (acc, q) => ({ ...acc, [q.difficulty]: acc[q.difficulty] + 1 }),
+    { easy: 0, medium: 0, hard: 0 } as Record<GrammarQuestion['difficulty'], number>
+  ), [questions]);
   const question = questions[currentIndex];
   const isCorrect = selectedIndex === question?.correctIndex;
   const pct = questions.length ? Math.round(((currentIndex + (selectedIndex !== null ? 1 : 0)) / questions.length) * 100) : 0;
+  const wrongCount = Object.entries(answers).filter(([questionId, selected]) => {
+    const answeredQuestion = questions.find((item) => item.id === questionId);
+    return answeredQuestion ? selected !== answeredQuestion.correctIndex : false;
+  }).length;
 
   const handleSelect = useCallback((idx: number) => {
     if (selectedIndex !== null || !question) return;
@@ -111,74 +148,90 @@ export default function GrammarLesson() {
   // ── LEARN MODE ────────────────────────────────────────────
   if (mode === 'learn') {
     return (
-      <div className="page-transition max-w-3xl mx-auto space-y-6">
+      <div className="page-transition max-w-5xl mx-auto space-y-6">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-3">
           <Link to="/grammar">
-            <Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" className="mt-1"><ArrowLeft className="h-5 w-5" /></Button>
           </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-serif font-bold">{lesson.title}</h1>
+          <div className="flex-1">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="text-xs">{lesson.level}</Badge>
+              <Badge variant="secondary" className="text-xs">{questions.length} quiz questions</Badge>
             </div>
-            <p className="text-sm text-muted-foreground">{lesson.description}</p>
+            <h1 className="mt-2 text-3xl font-serif font-bold leading-tight">{lesson.title}</h1>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{lesson.description}</p>
           </div>
         </div>
 
-        {/* Grammar tip card */}
-        <Card className="border-blue-200 bg-blue-50/50">
-          <CardContent className="py-5">
-            <div className="flex gap-3">
-              <Lightbulb className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="font-semibold text-blue-900 mb-2">Grammar Rule</p>
-                <p className="text-sm text-blue-800 leading-relaxed">{lesson.grammarTip}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+          <div className="space-y-6">
+            {/* Grammar tip card */}
+            <Card className="border-blue-200 bg-blue-50/60">
+              <CardContent className="py-5">
+                <div className="flex gap-3">
+                  <Lightbulb className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-blue-950 mb-2">Core Rule</p>
+                    <p className="text-sm text-blue-900 leading-relaxed">{lesson.grammarTip}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Lesson content if available */}
-        {lessonContent && (
-          <Card>
+            {/* Lesson content if available */}
+            {lessonContent && (
+              <Card>
+                <CardHeader className="border-b bg-muted/25 pb-4">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <BookOpen className="h-5 w-5" />Examples & Notes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div
+                    className="lesson-content"
+                    dangerouslySetInnerHTML={{ __html: typeof lessonContent === 'string' ? lessonContent : String(lessonContent) }}
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Quiz panel */}
+          <Card className="lg:sticky lg:top-6">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium flex items-center gap-2">
-                <BookOpen className="h-4 w-4" />Examples & Notes
+                <PenLine className="h-4 w-4" />Practice Quiz
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div
-                className="prose prose-sm max-w-none text-foreground prose-headings:font-semibold prose-headings:text-foreground prose-table:text-sm prose-td:py-1.5 prose-td:px-3 prose-th:py-1.5 prose-th:px-3"
-                dangerouslySetInnerHTML={{ __html: typeof lessonContent === 'string' ? lessonContent : String(lessonContent) }}
-              />
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-muted/25 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Layers className="h-4 w-4 text-primary" />
+                  {questions.length} questions
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Starts with 5 warm-ups, then ramps into medium and hard Goethe-style checks.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
+                  <Badge variant="outline" className="border-emerald-300 text-emerald-700">{difficultyCounts.easy} easy</Badge>
+                  <Badge variant="outline" className="border-amber-300 text-amber-700">{difficultyCounts.medium} medium</Badge>
+                  <Badge variant="outline" className="border-red-300 text-red-700">{difficultyCounts.hard} hard</Badge>
+                </div>
+              </div>
+              {prevProgress && (
+                <div className="flex items-start gap-2 text-sm p-3 bg-amber-50 text-amber-950 border border-amber-200 rounded-lg">
+                  <Trophy className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <span>Previous best: <strong>{prevProgress.score}/{prevProgress.totalQuestions}</strong>
+                  {' '}({Math.round((prevProgress.score / prevProgress.totalQuestions) * 100)}%)</span>
+                </div>
+              )}
+              <Button onClick={() => { setMode('quiz'); setCurrentIndex(0); setSelectedIndex(null); setAnswers({}); setScore(0); setFinished(false); }} className="w-full gap-2">
+                <PenLine className="h-4 w-4" />Start Quiz
+              </Button>
             </CardContent>
           </Card>
-        )}
-
-        {/* Preview of questions */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <PenLine className="h-4 w-4" />Practice Quiz — {questions.length} questions
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Test your understanding with {questions.length} multiple-choice questions. Each question includes a detailed explanation.
-            </p>
-            {prevProgress && (
-              <div className="flex items-center gap-2 text-sm p-3 bg-muted/40 rounded-lg">
-                <Trophy className="h-4 w-4 text-amber-500" />
-                <span>Previous best: <strong>{prevProgress.score}/{prevProgress.totalQuestions}</strong>
-                {' '}({Math.round((prevProgress.score / prevProgress.totalQuestions) * 100)}%)</span>
-              </div>
-            )}
-            <Button onClick={() => { setMode('quiz'); setCurrentIndex(0); setSelectedIndex(null); setAnswers({}); setScore(0); setFinished(false); }} className="w-full gap-2">
-              <PenLine className="h-4 w-4" />Start Quiz
-            </Button>
-          </CardContent>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -205,7 +258,7 @@ export default function GrammarLesson() {
       {/* Stats bar */}
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="text-srs-good font-medium">✓ {score} correct</span>
-        <span className="text-srs-again font-medium">✗ {currentIndex - score + (selectedIndex !== null ? 0 : 0)} wrong</span>
+        <span className="text-srs-again font-medium">✗ {wrongCount} wrong</span>
         {difficulty && (
           <Badge variant="outline" className={cn("text-xs ml-auto",
             difficulty === 'easy' ? 'text-emerald-600 border-emerald-300' :

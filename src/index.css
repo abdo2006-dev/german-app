@@ -209,6 +209,87 @@
   .stat-badge-due {
     @apply bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400;
   }
+
+  .lesson-content {
+    @apply text-base leading-7 text-foreground;
+  }
+
+  .lesson-content > * + * {
+    @apply mt-4;
+  }
+
+  .lesson-content h2 {
+    @apply mt-0 mb-5 border-b border-border pb-3 font-serif text-2xl font-bold leading-tight text-foreground;
+  }
+
+  .lesson-content h3 {
+    @apply mt-8 mb-3 flex items-center gap-2 font-serif text-xl font-bold leading-tight text-foreground;
+  }
+
+  .lesson-content h3::before {
+    content: "";
+    @apply h-6 w-1 rounded-full bg-primary/70;
+  }
+
+  .lesson-content p {
+    @apply max-w-3xl text-foreground/90;
+  }
+
+  .lesson-content strong {
+    @apply font-bold text-foreground;
+  }
+
+  .lesson-content em {
+    @apply rounded bg-muted/60 px-1 py-0.5 not-italic text-foreground;
+  }
+
+  .lesson-content ul {
+    @apply max-w-3xl space-y-2 rounded-lg border bg-muted/20 p-4;
+  }
+
+  .lesson-content li {
+    @apply relative pl-5 text-foreground/90;
+  }
+
+  .lesson-content li::before {
+    content: "";
+    @apply absolute left-0 top-[0.72rem] h-1.5 w-1.5 rounded-full bg-primary/70;
+  }
+
+  .lesson-content table {
+    @apply mt-4 block w-full max-w-full overflow-x-auto rounded-lg border border-border text-sm shadow-sm;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .lesson-content thead {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .lesson-content tbody {
+    @apply bg-card;
+  }
+
+  .lesson-content tr:nth-child(even) {
+    @apply bg-muted/35;
+  }
+
+  .lesson-content th,
+  .lesson-content td {
+    @apply whitespace-nowrap border-b border-border px-4 py-3 text-left align-top;
+  }
+
+  .lesson-content th {
+    @apply font-semibold;
+  }
+
+  .lesson-content td:first-child {
+    @apply font-semibold text-foreground;
+  }
+
+  .lesson-content tr:last-child td {
+    @apply border-b-0;
+  }
   
   /* Smooth page transitions */
   .page-transition {
