@@ -50,6 +50,18 @@ function addMinutes(now: Date, minutes: number) {
   return new Date(now.getTime() + minutes * MINUTE_MS);
 }
 
+function stepMinutes(steps: number[], idx: number, fallback: number) {
+  const raw = steps[idx] ?? steps[steps.length - 1] ?? fallback;
+  return Math.max(1, raw);
+}
+
+function hardLearningDelay(steps: number[], currentStepIndex: number, fallback: number) {
+  const current = stepMinutes(steps, currentStepIndex, fallback);
+  const next = stepMinutes(steps, currentStepIndex + 1, current);
+  if (currentStepIndex === 0) return Math.max(1, Math.round((current + next) / 2));
+  return current;
+}
+
 function addFuzz(days: number, opts: Required<Pick<SchedulerOptions, "fuzz" | "rng">>) {
   if (!opts.fuzz) return days;
   // Only fuzz multi-day review intervals to avoid breaking learning steps.
@@ -96,7 +108,7 @@ export function scheduleCard(
 
 function scheduleLearning(card: Card, rating: Rating, settings: DeckSettings, now: Date): ScheduleResult {
   const steps = settings.learningSteps;
-  const step = (idx: number) => steps[idx] ?? steps[steps.length - 1] ?? 1;
+  const step = (idx: number) => stepMinutes(steps, idx, 1);
 
   if (rating === "again") {
     return {
@@ -112,11 +124,11 @@ function scheduleLearning(card: Card, rating: Rating, settings: DeckSettings, no
   }
 
   if (rating === "hard") {
-    // Repeat current step
+    // Anki shows the first Hard step halfway between the first two learning steps.
     return {
       state: "learning",
       stepIndex: card.stepIndex,
-      due: addMinutes(now, step(card.stepIndex)),
+      due: addMinutes(now, hardLearningDelay(steps, card.stepIndex, 1)),
       interval: 0,
       lapseInterval: 0,
       ease: clampEase(card.ease - 0.15),
@@ -179,12 +191,12 @@ function scheduleReview(
 
   if (rating === "again") {
     const lapseInterval = Math.max(1, interval * settings.lapseNewInterval);
-    const stepMinutes = settings.lapseSteps[0] ?? 10;
+    const firstStepMinutes = stepMinutes(settings.lapseSteps, 0, 10);
 
     return {
       state: "relearning",
       stepIndex: 0,
-      due: addMinutes(now, stepMinutes),
+      due: addMinutes(now, firstStepMinutes),
       interval, // keep last review interval for stats/debug
       lapseInterval,
       ease: clampEase(card.ease - 0.2),
@@ -234,7 +246,7 @@ function scheduleRelearning(
   opts: Required<Pick<SchedulerOptions, "fuzz" | "rng">>
 ): ScheduleResult {
   const steps = settings.lapseSteps;
-  const step = (idx: number) => steps[idx] ?? steps[steps.length - 1] ?? 10;
+  const step = (idx: number) => stepMinutes(steps, idx, 10);
   const lapseInterval = Math.max(1, card.lapseInterval || 1);
 
   if (rating === "again") {
@@ -254,7 +266,7 @@ function scheduleRelearning(
     return {
       state: "relearning",
       stepIndex: card.stepIndex,
-      due: addMinutes(now, step(card.stepIndex)),
+      due: addMinutes(now, hardLearningDelay(steps, card.stepIndex, 10)),
       interval: card.interval,
       lapseInterval,
       ease: card.ease,

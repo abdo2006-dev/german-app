@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useFlashcardStore } from "@/store/flashcardStore";
 import { getNextIntervals } from "@/lib/srs";
-import { buildDueQueue, getNextLearningDueAt } from "@/lib/reviewQueue";
+import { buildDueQueue, getNextLearningDueAt, getSiblingKey, stableShuffle } from "@/lib/reviewQueue";
 import type { Card as CardType, Rating } from "@/types/flashcard";
 
 type QueueEntry = { cardId: string; isNew: boolean };
@@ -33,6 +33,7 @@ export default function Review() {
   const [currentCardId, setCurrentCardId] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const startTime = useRef(Date.now());
+  const buriedSiblingKeys = useRef<Set<string>>(new Set());
   const [sessionStats, setSessionStats] = useState({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
   const [isComplete, setIsComplete] = useState(false);
   const [waitingUntil, setWaitingUntil] = useState<Date | null>(null);
@@ -60,12 +61,20 @@ export default function Review() {
    */
   const buildSessionQueue = useCallback((now: Date): QueueEntry[] => {
     const state = useFlashcardStore.getState();
-    const dueItems = buildDueQueue(state.cards, scope, now, seed).map(i => ({ cardId: i.cardId, isNew: false }));
+    const dueItems = buildDueQueue(state.cards, scope, now, seed)
+      .map(i => state.cards.find(c => c.id === i.cardId))
+      .filter((c): c is CardType => Boolean(c))
+      .filter((c) => {
+        if (c.state === "learning" || c.state === "relearning") return true;
+        return !buriedSiblingKeys.current.has(getSiblingKey(c));
+      })
+      .map(c => ({ cardId: c.id, isNew: false }));
 
     // Gather new cards for each deck
     const newItems: QueueEntry[] = [];
     for (const deckId of selectedDeckIds) {
-      const newCards = state.getNewCardsForSession(deckId);
+      const newCards = stableShuffle(state.getNewCardsForSession(deckId), seed + deckId.length)
+        .filter((c) => !buriedSiblingKeys.current.has(getSiblingKey(c)));
       for (const c of newCards) newItems.push({ cardId: c.id, isNew: true });
     }
 
@@ -111,6 +120,7 @@ export default function Review() {
     setIsComplete(false);
     setSessionStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
     setRevealed(false);
+    buriedSiblingKeys.current = new Set();
     startTime.current = Date.now();
     pickNext(new Date());
   }, [deckIdsParam]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -136,6 +146,7 @@ export default function Review() {
     }
 
     reviewCard(currentCard.id, rating, timeSpent);
+    buriedSiblingKeys.current.add(getSiblingKey(currentCard));
     setSessionStats(prev => ({ ...prev, reviewed: prev.reviewed + 1, [rating]: (prev[rating] as number) + 1 }));
     setRevealed(false);
     startTime.current = Date.now();

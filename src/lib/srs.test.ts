@@ -81,4 +81,28 @@ describe("scheduler (Anki-like)", () => {
     expect(good1.stepIndex).toBe(1);
     expect(good1.due.getTime()).toBe(now.getTime() + 10 * 60_000);
   });
+
+  it("Hard on the first learning step uses the midpoint delay", () => {
+    const now = new Date("2026-01-01T12:00:00");
+    const card = mkReviewCard({ state: "learning", interval: 0, reps: 0, due: now, stepIndex: 0 });
+
+    const hard = scheduleCard(card, "hard", baseSettings, now, { fuzz: false });
+
+    expect(hard.state).toBe("learning");
+    expect(hard.due.getTime()).toBe(now.getTime() + 6 * 60_000);
+  });
+
+  it("clamps zero-minute learning and relearning steps to one minute", () => {
+    const now = new Date("2026-01-01T12:00:00");
+    const zeroStepSettings = { ...baseSettings, learningSteps: [0], lapseSteps: [0] };
+
+    const newCard = mkReviewCard({ state: "new", interval: 0, reps: 0, due: now, stepIndex: 0 });
+    const reviewCard = mkReviewCard({ state: "review", interval: 10, due: now });
+
+    const learningAgain = scheduleCard(newCard, "again", zeroStepSettings, now, { fuzz: false });
+    const reviewAgain = scheduleCard(reviewCard, "again", zeroStepSettings, now, { fuzz: false });
+
+    expect(learningAgain.due.getTime()).toBe(now.getTime() + 60_000);
+    expect(reviewAgain.due.getTime()).toBe(now.getTime() + 60_000);
+  });
 });

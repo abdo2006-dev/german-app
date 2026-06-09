@@ -10,7 +10,7 @@ export type QueueItem = {
   due: Date;
 };
 
-function stableShuffle<T>(arr: T[], seed: number): T[] {
+export function stableShuffle<T>(arr: T[], seed: number): T[] {
   const rng = mulberry32(seed);
   const out = [...arr];
   for (let i = out.length - 1; i > 0; i--) {
@@ -18,6 +18,14 @@ function stableShuffle<T>(arr: T[], seed: number): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+export function getSiblingKey(card: Pick<Card, "deckId" | "germanWord" | "englishMeaning">): string {
+  return [
+    card.deckId,
+    card.germanWord.trim().toLocaleLowerCase(),
+    card.englishMeaning.trim().toLocaleLowerCase(),
+  ].join("::");
 }
 
 export function getDueCardsForScope(cards: Card[], scope: ReviewScope, now: Date): Card[] {

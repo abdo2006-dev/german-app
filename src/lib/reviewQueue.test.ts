@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDueQueue, getDueCardsForScope } from "@/lib/reviewQueue";
+import { buildDueQueue, getDueCardsForScope, getSiblingKey, stableShuffle } from "@/lib/reviewQueue";
 import type { Card } from "@/types/flashcard";
 
 function mkCard(id: string, dueIso: string, createdIso: string): Card {
@@ -68,5 +68,28 @@ describe("review queue", () => {
     const scope = { deckIds: ["d1"] };
     const eligible = getDueCardsForScope([due, future, newCard], scope, now).map((c) => c.id);
     expect(eligible).toEqual(["due"]);
+  });
+
+  it("shuffles new-card batches deterministically", () => {
+    const cards = ["n1", "n2", "n3", "n4", "n5"];
+    const shuffled = stableShuffle(cards, 123);
+
+    expect(shuffled).toHaveLength(cards.length);
+    expect(new Set(shuffled)).toEqual(new Set(cards));
+    expect(shuffled.join(",")).not.toBe(cards.join(","));
+    expect(stableShuffle(cards, 123)).toEqual(shuffled);
+  });
+
+  it("identifies reverse-template siblings from the same vocab pair", () => {
+    const front = mkCard("front", "2026-01-01T11:00:00", "2026-01-01T10:00:00");
+    const reverse = {
+      ...front,
+      id: "reverse",
+      template: "english-to-german" as const,
+      germanWord: " FRONT ",
+      englishMeaning: "Front",
+    };
+
+    expect(getSiblingKey(front)).toBe(getSiblingKey(reverse));
   });
 });
