@@ -5,7 +5,7 @@ import { useGrammarStore } from '@/store/grammarStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle, BookOpen, Lock } from 'lucide-react';
+import { CheckCircle, BookOpen, Lock, FileText, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const levelConfig: Record<string, { color: string; bg: string; desc: string }> = {
@@ -48,6 +48,30 @@ export default function GrammarOverview() {
           <Progress value={totalLessons > 0 ? (totalDone / totalLessons) * 100 : 0} className="h-1.5 w-24 mt-1" />
         </div>
       </div>
+
+      <Link to="/grammar/shehata-a2">
+        <Card className="border-teal-200 bg-teal-50/70 transition-all hover:border-teal-300 hover:shadow-md">
+          <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-teal-100 p-2 text-teal-700">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-serif text-xl font-bold text-teal-950">Shehata PDF A2 Workbook</h2>
+                  <Badge variant="outline" className="border-teal-300 text-teal-700">Separate section</Badge>
+                </div>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-teal-900/80">
+                  Grouped lessons from the A2 PDF with explanations, examples, exercises, and answer keys.
+                </p>
+              </div>
+            </div>
+            <div className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white">
+              Open Workbook <ArrowRight className="h-4 w-4" />
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
 
       {grammarLevels.map((level, levelIdx) => {
         const lessons = getLessonsByLevel(level);

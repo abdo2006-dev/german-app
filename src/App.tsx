@@ -13,6 +13,7 @@ import Review from "./pages/Review";
 import Stats from "./pages/Stats";
 import GrammarOverview from "./pages/GrammarOverview";
 import GrammarLesson from "./pages/GrammarLesson";
+import ShehataA2 from "./pages/ShehataA2";
 import SpeakingTopics from "./pages/SpeakingTopics";
 import TodoPage from "./pages/Todo";
 import NotFound from "./pages/NotFound";
@@ -35,6 +36,7 @@ const App = () => (
             <Route path="/review" element={<Review />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/grammar" element={<GrammarOverview />} />
+            <Route path="/grammar/shehata-a2" element={<ShehataA2 />} />
             <Route path="/grammar/:lessonId" element={<GrammarLesson />} />
             <Route path="/speaking" element={<SpeakingTopics />} />
             <Route path="/todo" element={<TodoPage />} />
