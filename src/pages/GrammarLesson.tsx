@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getLessonById } from '@/data/grammar';
 import { lessonContentMap } from '@/data/grammar/lessonContent';
+import { lessonEnhancementMap } from '@/data/grammar/lessonEnhancements';
 import { useGrammarStore } from '@/store/grammarStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,7 +52,7 @@ export default function GrammarLesson() {
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
 
-  const lessonContent = lessonId ? lessonContentMap[lessonId] : undefined;
+  const lessonContent = lessonId ? [lessonContentMap[lessonId], lessonEnhancementMap[lessonId]].filter(Boolean).join('\n') : undefined;
   const prevProgress = lesson ? getProgress(lesson.id) : undefined;
   const questions = useMemo(() => orderQuestionsForExamRamp(lesson?.questions ?? []), [lesson]);
   const difficultyCounts = useMemo(() => questions.reduce(
