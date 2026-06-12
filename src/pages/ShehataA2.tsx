@@ -169,11 +169,77 @@ function getLineKind(line: string) {
   return 'text';
 }
 
-function groupLines(text: string) {
-  const lines = text
+function prepareBookLines(text: string) {
+  const rawLines = text
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
+  const lines: string[] = [];
+
+  for (const line of rawLines) {
+    const previous = lines[lines.length - 1];
+    if (
+      previous &&
+      /^[A-ZÄÖÜ]{4,}$/.test(previous) &&
+      /^[A-ZÄÖÜ]{1,2}$/.test(line) &&
+      previous.length + line.length <= 12
+    ) {
+      lines[lines.length - 1] = `${previous}${line}`;
+    } else {
+      lines.push(line);
+    }
+  }
+
+  return lines;
+}
+
+function getCaseLabel(value: string) {
+  const normalized = value.replace('.', '').toLowerCase();
+  if (normalized.startsWith('nom')) return 'Nominative';
+  if (normalized.startsWith('akk')) return 'Accusative';
+  if (normalized.startsWith('dat')) return 'Dative';
+  if (normalized.startsWith('gen')) return 'Genitive';
+  return value;
+}
+
+function parseCaseRows(lines: string[]) {
+  return lines
+    .map((line) => {
+      const match = line.match(/^(.+?)\s+(Nom\.?|Akk\.?|Dat\.?|Genitiv)$/i);
+      if (!match) return null;
+      const values = match[1].split(/\s+/).filter(Boolean);
+      if (values.length < 3 || values.length > 5) return null;
+      return {
+        caseName: getCaseLabel(match[2]),
+        values: values.reverse(),
+      };
+    })
+    .filter(Boolean) as Array<{ caseName: string; values: string[] }>;
+}
+
+function parsePronounRows(lines: string[]) {
+  const start = lines.findIndex((line) => /^Nominativ\s+Akkusativ\s+Dativ$/i.test(line));
+  if (start === -1) return [];
+  const rows: Array<{ nominative: string; accusative: string; dative: string }> = [];
+
+  for (const line of lines.slice(start + 1)) {
+    if (/Possessivartikel/i.test(line)) break;
+    const tokens = line.split(/\s+/).filter(Boolean);
+    if (tokens.length === 3) {
+      rows.push({ nominative: tokens[0], accusative: tokens[1], dative: tokens[2] });
+    }
+  }
+
+  return rows.length >= 4 ? rows : [];
+}
+
+function getPrepositionChips(lines: string[]) {
+  const chips = lines.filter((line) => /^[A-ZÄÖÜ]{2,12}$/.test(line));
+  return chips.length >= 4 ? chips : [];
+}
+
+function groupLines(text: string) {
+  const lines = prepareBookLines(text);
 
   const blocks: Array<{ kind: string; lines: string[] }> = [];
   for (const line of lines) {
@@ -665,13 +731,109 @@ export default function ShehataA2() {
 }
 
 function BookSectionCard({ section, compact = false }: { section: BookSection; compact?: boolean }) {
+  const lines = prepareBookLines(section.text);
+  const prepositionChips = getPrepositionChips(lines);
+  const caseRows = parseCaseRows(lines);
+  const pronounRows = parsePronounRows(lines);
   const blocks = groupLines(section.text);
 
   return (
     <div className={cn('rounded-lg border bg-background', compact ? 'p-3' : 'p-4')}>
       <Badge variant="secondary">PDF page {section.page}</Badge>
       <div className="mt-3 space-y-3">
+        {prepositionChips.length >= 4 && (
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Book keyword list</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+              {prepositionChips.map((chip) => (
+                <div key={chip} className="rounded-md border bg-background px-3 py-2 text-center text-sm font-semibold">
+                  {chip}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {caseRows.length >= 2 && (
+          <div className="overflow-hidden rounded-lg border">
+            <div className="border-b bg-muted/35 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Case / Article Table From The Book
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[34rem] text-sm">
+                <thead className="bg-muted/20">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Case</th>
+                    <th className="px-3 py-2 text-left font-semibold">der</th>
+                    <th className="px-3 py-2 text-left font-semibold">das</th>
+                    <th className="px-3 py-2 text-left font-semibold">die (sg.)</th>
+                    <th className="px-3 py-2 text-left font-semibold">die (pl.)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {caseRows.map((row, index) => (
+                    <tr key={`${row.caseName}-${index}`} className="border-t">
+                      <td className="px-3 py-2 font-semibold">{row.caseName}</td>
+                      {[0, 1, 2, 3].map((cellIndex) => (
+                        <td key={cellIndex} className="px-3 py-2">{row.values[cellIndex] ?? '—'}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {pronounRows.length > 0 && (
+          <div className="overflow-hidden rounded-lg border">
+            <div className="border-b bg-muted/35 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Pronoun Table From The Book
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-muted/20">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Nominative</th>
+                  <th className="px-3 py-2 text-left font-semibold">Accusative</th>
+                  <th className="px-3 py-2 text-left font-semibold">Dative</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pronounRows.map((row) => (
+                  <tr key={`${row.nominative}-${row.accusative}-${row.dative}`} className="border-t">
+                    <td className="px-3 py-2 font-medium">{row.nominative}</td>
+                    <td className="px-3 py-2">{row.accusative}</td>
+                    <td className="px-3 py-2">{row.dative}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {blocks.map((block, index) => {
+          if (
+            prepositionChips.length >= 4 &&
+            block.lines.every((line) => prepositionChips.includes(line))
+          ) {
+            return null;
+          }
+
+          if (
+            caseRows.length >= 2 &&
+            block.lines.every((line) => parseCaseRows([line]).length > 0)
+          ) {
+            return null;
+          }
+
+          if (
+            pronounRows.length > 0 &&
+            (block.lines.some((line) => /^Nominativ\s+Akkusativ\s+Dativ$/i.test(line)) ||
+              block.lines.every((line) => line.split(/\s+/).length === 3 && pronounRows.some((row) => `${row.nominative} ${row.accusative} ${row.dative}` === line)))
+          ) {
+            return null;
+          }
+
           if (block.kind === 'heading') {
             return (
               <div key={`${block.kind}-${index}`} className="flex flex-wrap gap-2">
@@ -719,9 +881,13 @@ function BookSectionCard({ section, compact = false }: { section: BookSection; c
           }
 
           return (
-            <p key={`${block.kind}-${index}`} className="text-sm leading-7 text-foreground">
-              {block.lines.join(' ')}
-            </p>
+            <div key={`${block.kind}-${index}`} className="space-y-1.5 rounded-md bg-muted/10 p-3">
+              {block.lines.map((line) => (
+                <p key={line} className="text-sm leading-7 text-foreground">
+                  {line}
+                </p>
+              ))}
+            </div>
           );
         })}
       </div>
