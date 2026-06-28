@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useFlashcardStore } from "@/store/flashcardStore";
 import { getNextIntervals } from "@/lib/srs";
@@ -14,11 +15,26 @@ import type { Card as CardType, Rating } from "@/types/flashcard";
 
 type QueueEntry = { cardId: string; isNew: boolean };
 type ExampleLevel = "A2" | "B1";
+type AiPracticeMode = "generate" | "check";
 type CardExample = {
   sentence?: string;
   translation?: string;
   wordNote?: string;
   grammarTip?: string;
+  vocabulary?: { word: string; translation: string; note?: string }[];
+};
+type CardSentenceCheck = {
+  usesFlashcardWord?: boolean;
+  correctForm?: string;
+  a2Alternative?: string;
+  b1Alternative?: string;
+  translations?: {
+    correctForm?: string;
+    a2?: string;
+    b1?: string;
+  };
+  wordFeedback?: string;
+  rules?: { title: string; explanation: string; example?: string }[];
   vocabulary?: { word: string; translation: string; note?: string }[];
 };
 
@@ -50,6 +66,11 @@ export default function Review() {
   const [aiExample, setAiExample] = useState<CardExample | null>(null);
   const [aiExampleLoading, setAiExampleLoading] = useState(false);
   const [aiExampleError, setAiExampleError] = useState<string | null>(null);
+  const [aiPracticeMode, setAiPracticeMode] = useState<AiPracticeMode>("generate");
+  const [ownSentence, setOwnSentence] = useState("");
+  const [sentenceCheck, setSentenceCheck] = useState<CardSentenceCheck | null>(null);
+  const [sentenceCheckLoading, setSentenceCheckLoading] = useState(false);
+  const [sentenceCheckError, setSentenceCheckError] = useState<string | null>(null);
 
   const scope = useMemo(() => ({ deckIds: selectedDeckIds }), [selectedDeckIds]);
 
@@ -153,6 +174,10 @@ export default function Review() {
     setAiExample(null);
     setAiExampleError(null);
     setAiExampleLoading(false);
+    setOwnSentence("");
+    setSentenceCheck(null);
+    setSentenceCheckError(null);
+    setSentenceCheckLoading(false);
   }, [currentCardId]);
 
   const generateAiExample = useCallback(async () => {
@@ -186,6 +211,38 @@ export default function Review() {
     }
   }, [currentCard, exampleLevel]);
 
+  const checkOwnSentence = useCallback(async () => {
+    if (!currentCard || ownSentence.trim().length < 2) return;
+
+    setSentenceCheckLoading(true);
+    setSentenceCheckError(null);
+
+    try {
+      const res = await fetch("/api/german-helper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "card-sentence",
+          level: "both",
+          input: ownSentence.trim(),
+          germanWord: currentCard.germanWord,
+          englishMeaning: currentCard.englishMeaning,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `API error ${res.status}`);
+      }
+
+      setSentenceCheck(data.result as CardSentenceCheck);
+    } catch (err: any) {
+      setSentenceCheckError(err.message ?? "Could not check your sentence.");
+    } finally {
+      setSentenceCheckLoading(false);
+    }
+  }, [currentCard, ownSentence]);
+
   const handleRate = useCallback((rating: Rating) => {
     if (!currentCard) return;
     const timeSpent = Date.now() - startTime.current;
@@ -215,6 +272,10 @@ export default function Review() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTyping = target?.tagName === "TEXTAREA" || target?.tagName === "INPUT" || target?.isContentEditable;
+      if (isTyping) return;
+
       if (e.key === " " || e.key === "Enter") {
         if (!revealed && currentCard) handleReveal();
         e.preventDefault();
@@ -373,85 +434,187 @@ export default function Review() {
       </Card>
 
       <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
-        <CardContent className="space-y-3 p-4">
+        <CardContent className="space-y-4 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
               <div>
-                <p className="text-sm font-semibold">Groq example</p>
-                <p className="text-xs text-muted-foreground">Generate a sentence for this exact card.</p>
+                <p className="text-sm font-semibold">Groq practice</p>
+                <p className="text-xs text-muted-foreground">Use this word in context.</p>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <Select value={exampleLevel} onValueChange={(value) => setExampleLevel(value as ExampleLevel)}>
-                <SelectTrigger className="h-9 w-[88px] bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="A2">A2</SelectItem>
-                  <SelectItem value="B1">B1</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                variant={aiExample ? "outline" : "default"}
-                size="sm"
-                onClick={generateAiExample}
-                disabled={aiExampleLoading}
-                className="gap-2"
-              >
-                {aiExampleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
-                {aiExample ? "Regenerate" : "Example"}
-              </Button>
             </div>
           </div>
 
-          {aiExampleError && (
-            <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-              <p className="text-muted-foreground">{aiExampleError}</p>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
+            {([
+              ["generate", "Generate"],
+              ["check", "Check mine"],
+            ] as [AiPracticeMode, string][]).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setAiPracticeMode(mode)}
+                className={cn(
+                  "rounded px-3 py-2 text-sm font-medium transition-colors",
+                  aiPracticeMode === mode
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-          {aiExample && (
-            <div className="space-y-3 rounded-md border bg-background p-4">
-              {aiExample.sentence && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">German</p>
-                  <p className="mt-1 text-base font-medium leading-relaxed">„{aiExample.sentence}"</p>
+          {aiPracticeMode === "generate" ? (
+            <>
+              <div className="flex gap-2">
+                <Select value={exampleLevel} onValueChange={(value) => setExampleLevel(value as ExampleLevel)}>
+                  <SelectTrigger className="h-9 w-[88px] bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A2">A2</SelectItem>
+                    <SelectItem value="B1">B1</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant={aiExample ? "outline" : "default"}
+                  size="sm"
+                  onClick={generateAiExample}
+                  disabled={aiExampleLoading}
+                  className="flex-1 gap-2"
+                >
+                  {aiExampleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
+                  {aiExample ? "Regenerate Example" : "Generate Example"}
+                </Button>
+              </div>
+
+              {aiExampleError && (
+                <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <p className="text-muted-foreground">{aiExampleError}</p>
                 </div>
               )}
-              {aiExample.translation && (
-                <div className="border-t pt-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">English</p>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">"{aiExample.translation}"</p>
-                </div>
-              )}
-              {(aiExample.wordNote || aiExample.grammarTip) && (
-                <div className="grid gap-2 border-t pt-3 sm:grid-cols-2">
-                  {aiExample.wordNote && (
-                    <div className="rounded-md bg-muted/45 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
-                      <p className="mt-1 text-sm leading-relaxed">{aiExample.wordNote}</p>
+
+              {aiExample && (
+                <div className="space-y-3 rounded-md border bg-background p-4">
+                  {aiExample.sentence && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">German</p>
+                      <p className="mt-1 text-base font-medium leading-relaxed">„{aiExample.sentence}"</p>
                     </div>
                   )}
-                  {aiExample.grammarTip && (
-                    <div className="rounded-md bg-muted/45 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
-                      <p className="mt-1 text-sm leading-relaxed">{aiExample.grammarTip}</p>
+                  {aiExample.translation && (
+                    <div className="border-t pt-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">English</p>
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">"{aiExample.translation}"</p>
+                    </div>
+                  )}
+                  {(aiExample.wordNote || aiExample.grammarTip) && (
+                    <div className="grid gap-2 border-t pt-3 sm:grid-cols-2">
+                      {aiExample.wordNote && (
+                        <div className="rounded-md bg-muted/45 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
+                          <p className="mt-1 text-sm leading-relaxed">{aiExample.wordNote}</p>
+                        </div>
+                      )}
+                      {aiExample.grammarTip && (
+                        <div className="rounded-md bg-muted/45 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
+                          <p className="mt-1 text-sm leading-relaxed">{aiExample.grammarTip}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {aiExample.vocabulary && aiExample.vocabulary.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 border-t pt-3">
+                      {aiExample.vocabulary.slice(0, 4).map((item, index) => (
+                        <Badge key={`${item.word}-${index}`} variant="secondary" className="rounded-full">
+                          {item.word} = {item.translation}
+                        </Badge>
+                      ))}
                     </div>
                   )}
                 </div>
               )}
-              {aiExample.vocabulary && aiExample.vocabulary.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 border-t pt-3">
-                  {aiExample.vocabulary.slice(0, 4).map((item, index) => (
-                    <Badge key={`${item.word}-${index}`} variant="secondary" className="rounded-full">
-                      {item.word} = {item.translation}
-                    </Badge>
-                  ))}
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Textarea
+                  value={ownSentence}
+                  onChange={(event) => {
+                    setOwnSentence(event.target.value);
+                    setSentenceCheck(null);
+                    setSentenceCheckError(null);
+                  }}
+                  placeholder={`Write a German sentence with "${currentCard.germanWord}"...`}
+                  className="min-h-[86px] resize-none bg-background text-sm leading-relaxed"
+                />
+                <Button
+                  size="sm"
+                  onClick={checkOwnSentence}
+                  disabled={sentenceCheckLoading || ownSentence.trim().length < 2}
+                  className="w-full gap-2"
+                >
+                  {sentenceCheckLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Check My Sentence
+                </Button>
+              </div>
+
+              {sentenceCheckError && (
+                <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <p className="text-muted-foreground">{sentenceCheckError}</p>
                 </div>
               )}
-            </div>
+
+              {sentenceCheck && (
+                <div className="space-y-3 rounded-md border bg-background p-4">
+                  {sentenceCheck.usesFlashcardWord === false && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                      Try to include <strong>{currentCard.germanWord}</strong> directly in your sentence.
+                    </div>
+                  )}
+                  <SentenceResultBlock
+                    label="Corrected"
+                    value={sentenceCheck.correctForm}
+                    translation={sentenceCheck.translations?.correctForm}
+                    highlight
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <SentenceResultBlock
+                      label="A2 natural"
+                      value={sentenceCheck.a2Alternative}
+                      translation={sentenceCheck.translations?.a2}
+                    />
+                    <SentenceResultBlock
+                      label="B1 natural"
+                      value={sentenceCheck.b1Alternative}
+                      translation={sentenceCheck.translations?.b1}
+                    />
+                  </div>
+                  {sentenceCheck.wordFeedback && (
+                    <div className="rounded-md bg-muted/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Word feedback</p>
+                      <p className="mt-1 text-sm leading-relaxed">{sentenceCheck.wordFeedback}</p>
+                    </div>
+                  )}
+                  {sentenceCheck.rules && sentenceCheck.rules.length > 0 && (
+                    <div className="space-y-2 border-t pt-3">
+                      {sentenceCheck.rules.slice(0, 2).map((rule, index) => (
+                        <div key={`${rule.title}-${index}`} className="rounded-md bg-muted/45 p-3">
+                          <p className="text-sm font-semibold">{rule.title}</p>
+                          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{rule.explanation}</p>
+                          {rule.example && <p className="mt-2 text-sm font-medium">{rule.example}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -480,6 +643,28 @@ export default function Review() {
       )}
 
       <p className="text-center text-xs text-muted-foreground">Space to reveal · 1–4 to rate</p>
+    </div>
+  );
+}
+
+function SentenceResultBlock({
+  label,
+  value,
+  translation,
+  highlight,
+}: {
+  label: string;
+  value?: string;
+  translation?: string;
+  highlight?: boolean;
+}) {
+  if (!value) return null;
+
+  return (
+    <div className={cn("rounded-md border p-3", highlight ? "border-primary/30 bg-primary/5" : "bg-muted/30")}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-medium leading-relaxed">„{value}"</p>
+      {translation && <p className="mt-2 border-t pt-2 text-xs leading-relaxed text-muted-foreground">"{translation}"</p>}
     </div>
   );
 }

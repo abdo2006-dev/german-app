@@ -4,7 +4,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
-type HelperMode = 'sentence' | 'paragraph' | 'card-example';
+type HelperMode = 'sentence' | 'paragraph' | 'card-example' | 'card-sentence';
 type HelperLevel = 'A2' | 'B1' | 'both';
 
 function cleanJson(content: string) {
@@ -88,6 +88,41 @@ Return JSON with this exact shape:
 Keep it practical for memorizing this exact card. If the word is a verb, you may conjugate it naturally, but mention the infinitive in wordNote. If it is a noun, include its article when known.`;
   }
 
+  if (mode === 'card-sentence') {
+    const germanWord = card?.germanWord || '';
+    const englishMeaning = card?.englishMeaning || '';
+
+    return `${levelRules}
+
+Task: The learner wrote their own German sentence while reviewing a flashcard. Correct it and give more natural A2 and B1 versions.
+Flashcard German word: ${germanWord}
+Flashcard English meaning: ${englishMeaning}
+Learner sentence: ${input}
+
+Return JSON with this exact shape:
+{
+  "mode": "card-sentence",
+  "usesFlashcardWord": boolean,
+  "correctForm": "grammatically corrected version of the learner sentence",
+  "a2Alternative": "natural A2-level version using the flashcard word",
+  "b1Alternative": "natural B1-level version using the flashcard word",
+  "translations": {
+    "correctForm": "English translation",
+    "a2": "English translation",
+    "b1": "English translation"
+  },
+  "wordFeedback": "brief feedback on how the flashcard word was used, or how to include it",
+  "rules": [
+    { "title": "short grammar point", "explanation": "brief learner-friendly explanation", "example": "German example" }
+  ],
+  "vocabulary": [
+    { "word": "German word", "translation": "English translation", "note": "brief usage note or empty string" }
+  ]
+}
+
+The A2 version must stay simple. The B1 version may use connectors/subordinate clauses when natural. If the learner did not use the flashcard word, gently include it in the A2 and B1 alternatives and set usesFlashcardWord to false.`;
+  }
+
   return `${levelRules}
 
 Task: Use as many of these German words as naturally possible in a short paragraph.
@@ -130,8 +165,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const helperMode = mode as HelperMode;
   const helperLevel = level as HelperLevel;
 
-  if (helperMode !== 'sentence' && helperMode !== 'paragraph' && helperMode !== 'card-example') {
-    return res.status(400).json({ error: 'Mode must be sentence, paragraph, or card-example.' });
+  if (helperMode !== 'sentence' && helperMode !== 'paragraph' && helperMode !== 'card-example' && helperMode !== 'card-sentence') {
+    return res.status(400).json({ error: 'Mode must be sentence, paragraph, card-example, or card-sentence.' });
   }
 
   if (!['A2', 'B1', 'both'].includes(helperLevel)) {
