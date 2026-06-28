@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, FolderOpen, Plus, BookOpen, GraduationCap, BarChart3, Menu, X, Mic, ListTodo } from 'lucide-react';
+import { Home, FolderOpen, Plus, BookOpen, GraduationCap, BarChart3, Menu, X, Mic, ListTodo, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,7 @@ const navItems = [
   { path: '/practice', icon: BookOpen, label: 'Review' },
   { path: '/grammar', icon: GraduationCap, label: 'Grammar' },
   { path: '/speaking', icon: Mic, label: 'Speaking' },
+  { path: '/helper', icon: Sparkles, label: 'Helper' },
   { path: '/todo', icon: ListTodo, label: 'Tasks' },
   { path: '/stats', icon: BarChart3, label: 'Stats' },
 ];
