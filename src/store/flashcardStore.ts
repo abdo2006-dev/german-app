@@ -329,6 +329,11 @@ export const useFlashcardStore = create<FlashcardState>()(
         if (!state) return;
         state.folders = deserializeDates(state.folders, ['createdAt', 'updatedAt']);
         state.decks = deserializeDates(state.decks, ['createdAt', 'updatedAt']);
+        state.decks = state.decks.map((d: any) => ({
+          ...d,
+          folderId: d.folderId ?? null,
+          settings: { ...DEFAULT_DECK_SETTINGS, ...(d.settings ?? {}) },
+        }));
         state.cards = deserializeDates(state.cards, ['createdAt', 'updatedAt', 'due']);
         // Migrate old cards missing new fields
         state.cards = state.cards.map((c: any) => ({

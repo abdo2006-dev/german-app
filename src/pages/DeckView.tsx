@@ -74,6 +74,7 @@ export default function DeckView() {
   // Settings form state
   const [newCardsPerDay, setNewCardsPerDay] = useState(20);
   const [templateMode, setTemplateMode] = useState<DeckSettings['templateMode']>('both');
+  const [settingsFolderId, setSettingsFolderId] = useState<string | null>(null);
 
   if (!deck || !stats) {
     return (
@@ -126,14 +127,16 @@ export default function DeckView() {
   const openSettings = () => {
     setNewCardsPerDay(deck.settings.newCardsPerDay);
     setTemplateMode(deck.settings.templateMode);
+    setSettingsFolderId(deck.folderId);
     setSettingsOpen(true);
   };
 
   const handleSaveSettings = () => {
     updateDeck(deck.id, {
+      folderId: settingsFolderId,
       settings: {
         ...deck.settings,
-        newCardsPerDay,
+        newCardsPerDay: Math.max(0, Math.floor(newCardsPerDay || 0)),
         templateMode,
       }
     });
@@ -364,14 +367,56 @@ export default function DeckView() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
+              <Label>Folder</Label>
+              <Select
+                value={settingsFolderId || 'none'}
+                onValueChange={(v) => setSettingsFolderId(v === 'none' ? null : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No folder</SelectItem>
+                  {folders.map(folder => (
+                    <SelectItem key={folder.id} value={folder.id}>
+                      {folder.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>New Cards Per Day</Label>
               <Input
                 type="number"
                 value={newCardsPerDay}
-                onChange={(e) => setNewCardsPerDay(parseInt(e.target.value) || 0)}
+                onChange={(e) => setNewCardsPerDay(Math.max(0, parseInt(e.target.value) || 0))}
                 min={0}
-                max={100}
               />
+              <div className="flex flex-wrap gap-2">
+                {[20, 50, 100, 200].map(value => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewCardsPerDay(value)}
+                  >
+                    {value}
+                  </Button>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNewCardsPerDay(9999)}
+                >
+                  All new
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Reviews and learning cards always stay due. This only controls how many brand-new cards enter each day.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Card Templates</Label>

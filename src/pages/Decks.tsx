@@ -24,6 +24,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -47,6 +51,7 @@ export default function Decks() {
     deleteFolder,
     createDeck,
     updateDeck,
+    moveDeck,
     deleteDeck,
     getDeckStats,
     cards
@@ -107,6 +112,12 @@ export default function Decks() {
     toast.success('Deck deleted');
   };
 
+  const handleMoveDeck = (deckId: string, folderId: string | null) => {
+    moveDeck(deckId, folderId);
+    const folder = folderId ? folders.find(f => f.id === folderId) : null;
+    toast.success(folder ? `Moved to ${folder.name}` : 'Moved to Unfiled');
+  };
+
   const openEditFolder = (folder: { id: string; name: string }) => {
     setEditingFolder(folder);
     setFolderName(folder.name);
@@ -117,6 +128,13 @@ export default function Decks() {
     setEditingDeck(deck);
     setDeckName(deck.name);
     setDeckFolderId(deck.folderId);
+    setDeckDialogOpen(true);
+  };
+
+  const openNewDeck = (folderId: string | null = null) => {
+    setEditingDeck(null);
+    setDeckName('');
+    setDeckFolderId(folderId);
     setDeckDialogOpen(true);
   };
 
@@ -152,12 +170,7 @@ export default function Decks() {
           </Button>
           <Button 
             className="gap-2"
-            onClick={() => {
-              setEditingDeck(null);
-              setDeckName('');
-              setDeckFolderId(null);
-              setDeckDialogOpen(true);
-            }}
+            onClick={() => openNewDeck()}
           >
             <Plus className="h-4 w-4" />
             New Deck
@@ -177,7 +190,9 @@ export default function Decks() {
                 stats={getDeckStats(deck.id)}
                 cardCount={cards.filter(c => c.deckId === deck.id).length}
                 onEdit={() => openEditDeck(deck)}
+                onMove={(folderId) => handleMoveDeck(deck.id, folderId)}
                 onDelete={() => handleDeleteDeck(deck.id)}
+                folders={folders}
               />
             ))}
           </div>
@@ -195,27 +210,33 @@ export default function Decks() {
                 ({decks.length} {decks.length === 1 ? 'deck' : 'decks'})
               </span>
             </div>
-            
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => openEditFolder(folder)}>
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => handleDeleteFolder(folder.id)}
-                  className="text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openNewDeck(folder.id)}>
+                <Plus className="h-3.5 w-3.5" />
+                Deck
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openEditFolder(folder)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleDeleteFolder(folder.id)}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           
           {decks.length === 0 ? (
@@ -233,7 +254,9 @@ export default function Decks() {
                   stats={getDeckStats(deck.id)}
                   cardCount={cards.filter(c => c.deckId === deck.id).length}
                   onEdit={() => openEditDeck(deck)}
+                  onMove={(folderId) => handleMoveDeck(deck.id, folderId)}
                   onDelete={() => handleDeleteDeck(deck.id)}
+                  folders={folders}
                 />
               ))}
             </div>
@@ -352,13 +375,17 @@ function DeckCard({
   stats, 
   cardCount,
   onEdit, 
-  onDelete 
+  onMove,
+  onDelete,
+  folders,
 }: { 
-  deck: { id: string; name: string };
+  deck: { id: string; name: string; folderId: string | null };
   stats: { newCount: number; learningCount: number; reviewCount: number; dueCount: number };
   cardCount: number;
   onEdit: () => void;
+  onMove: (folderId: string | null) => void;
   onDelete: () => void;
+  folders: { id: string; name: string }[];
 }) {
   return (
     <Card className="deck-card group">
@@ -384,6 +411,24 @@ function DeckCard({
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit
               </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Folder className="h-4 w-4 mr-2" />
+                  Move to folder
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => onMove(null)}>
+                    No folder
+                  </DropdownMenuItem>
+                  {folders.length > 0 && <DropdownMenuSeparator />}
+                  {folders.map(folder => (
+                    <DropdownMenuItem key={folder.id} onClick={() => onMove(folder.id)}>
+                      {folder.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onDelete} className="text-destructive">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
