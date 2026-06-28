@@ -4,7 +4,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
-type HelperMode = 'sentence' | 'paragraph';
+type HelperMode = 'sentence' | 'paragraph' | 'card-example';
 type HelperLevel = 'A2' | 'B1' | 'both';
 
 function cleanJson(content: string) {
@@ -27,7 +27,7 @@ function parseJsonResponse(content: string) {
   }
 }
 
-function buildPrompt(mode: HelperMode, level: HelperLevel, input: string) {
+function buildPrompt(mode: HelperMode, level: HelperLevel, input: string, card?: { germanWord?: string; englishMeaning?: string }) {
   const levelRules = `Level control:
 - A2: use simple clauses, common vocabulary, Perfekt/present/modal verbs, and avoid "zu + Infinitiv".
 - B1: you may use subordinate clauses, relative clauses, weil/dass/wenn/obwohl, and "zu + Infinitiv" when natural.
@@ -60,6 +60,32 @@ Return JSON with this exact shape:
 }
 
 Only include vocabulary that is new, corrected, or important. Explain the user's actual mistakes, especially cases, adjective endings, articles, word order, gender, tense, and false friends.`;
+  }
+
+  if (mode === 'card-example') {
+    const germanWord = card?.germanWord || input;
+    const englishMeaning = card?.englishMeaning || '';
+
+    return `${levelRules}
+
+Task: Create one useful example for a flashcard while the learner is reviewing vocabulary.
+German flashcard word: ${germanWord}
+English meaning: ${englishMeaning}
+Requested level: ${level}
+
+Return JSON with this exact shape:
+{
+  "mode": "card-example",
+  "sentence": "one natural German example sentence using the flashcard word or a correct inflected/conjugated form",
+  "translation": "English translation of the sentence",
+  "wordNote": "short note explaining the flashcard word in this sentence",
+  "grammarTip": "one short grammar or usage reminder connected to this sentence",
+  "vocabulary": [
+    { "word": "German word", "translation": "English translation", "note": "brief usage note or empty string" }
+  ]
+}
+
+Keep it practical for memorizing this exact card. If the word is a verb, you may conjugate it naturally, but mention the infinitive in wordNote. If it is a noun, include its article when known.`;
   }
 
   return `${levelRules}
@@ -100,19 +126,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'GROQ_API_KEY is not configured on the server.' });
   }
 
-  const { mode, level = 'A2', input } = req.body ?? {};
+  const { mode, level = 'A2', input, germanWord, englishMeaning } = req.body ?? {};
   const helperMode = mode as HelperMode;
   const helperLevel = level as HelperLevel;
 
-  if (helperMode !== 'sentence' && helperMode !== 'paragraph') {
-    return res.status(400).json({ error: 'Mode must be sentence or paragraph.' });
+  if (helperMode !== 'sentence' && helperMode !== 'paragraph' && helperMode !== 'card-example') {
+    return res.status(400).json({ error: 'Mode must be sentence, paragraph, or card-example.' });
   }
 
   if (!['A2', 'B1', 'both'].includes(helperLevel)) {
     return res.status(400).json({ error: 'Level must be A2, B1, or both.' });
   }
 
-  if (typeof input !== 'string' || input.trim().length < 2) {
+  const effectiveInput = helperMode === 'card-example'
+    ? String(germanWord || input || '').trim()
+    : typeof input === 'string'
+      ? input.trim()
+      : '';
+
+  if (effectiveInput.length < 2) {
     return res.status(400).json({ error: 'Input is too short.' });
   }
 
@@ -134,7 +166,13 @@ Always return valid JSON only. Do not include markdown.`;
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: buildPrompt(helperMode, helperLevel, input.trim()) },
+          {
+            role: 'user',
+            content: buildPrompt(helperMode, helperLevel, effectiveInput, {
+              germanWord: typeof germanWord === 'string' ? germanWord.trim() : undefined,
+              englishMeaning: typeof englishMeaning === 'string' ? englishMeaning.trim() : undefined,
+            }),
+          },
         ],
       }),
     });

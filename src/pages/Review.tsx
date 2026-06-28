@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, CheckCircle, X, Zap, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Lightbulb, Loader2, Sparkles, X, Zap, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useFlashcardStore } from "@/store/flashcardStore";
 import { getNextIntervals } from "@/lib/srs";
@@ -12,6 +13,14 @@ import { buildDueQueue, getNextLearningDueAt, getSiblingKey, stableShuffle } fro
 import type { Card as CardType, Rating } from "@/types/flashcard";
 
 type QueueEntry = { cardId: string; isNew: boolean };
+type ExampleLevel = "A2" | "B1";
+type CardExample = {
+  sentence?: string;
+  translation?: string;
+  wordNote?: string;
+  grammarTip?: string;
+  vocabulary?: { word: string; translation: string; note?: string }[];
+};
 
 const ratingButtonClasses: Record<Rating, string> = {
   again: "rating-btn-again",
@@ -37,6 +46,10 @@ export default function Review() {
   const [sessionStats, setSessionStats] = useState({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
   const [isComplete, setIsComplete] = useState(false);
   const [waitingUntil, setWaitingUntil] = useState<Date | null>(null);
+  const [exampleLevel, setExampleLevel] = useState<ExampleLevel>("A2");
+  const [aiExample, setAiExample] = useState<CardExample | null>(null);
+  const [aiExampleLoading, setAiExampleLoading] = useState(false);
+  const [aiExampleError, setAiExampleError] = useState<string | null>(null);
 
   const scope = useMemo(() => ({ deckIds: selectedDeckIds }), [selectedDeckIds]);
 
@@ -135,6 +148,43 @@ export default function Review() {
   }, [waitingUntil, pickNext]);
 
   const handleReveal = useCallback(() => setRevealed(true), []);
+
+  useEffect(() => {
+    setAiExample(null);
+    setAiExampleError(null);
+    setAiExampleLoading(false);
+  }, [currentCardId]);
+
+  const generateAiExample = useCallback(async () => {
+    if (!currentCard) return;
+
+    setAiExampleLoading(true);
+    setAiExampleError(null);
+
+    try {
+      const res = await fetch("/api/german-helper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "card-example",
+          level: exampleLevel,
+          germanWord: currentCard.germanWord,
+          englishMeaning: currentCard.englishMeaning,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `API error ${res.status}`);
+      }
+
+      setAiExample(data.result as CardExample);
+    } catch (err: any) {
+      setAiExampleError(err.message ?? "Could not generate an example for this card.");
+    } finally {
+      setAiExampleLoading(false);
+    }
+  }, [currentCard, exampleLevel]);
 
   const handleRate = useCallback((rating: Rating) => {
     if (!currentCard) return;
@@ -315,6 +365,90 @@ export default function Review() {
                   {currentCard.englishExample && (
                     <p className="text-xs text-muted-foreground mt-1.5">"{currentCard.englishExample}"</p>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Groq example</p>
+                <p className="text-xs text-muted-foreground">Generate a sentence for this exact card.</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Select value={exampleLevel} onValueChange={(value) => setExampleLevel(value as ExampleLevel)}>
+                <SelectTrigger className="h-9 w-[88px] bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="A2">A2</SelectItem>
+                  <SelectItem value="B1">B1</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant={aiExample ? "outline" : "default"}
+                size="sm"
+                onClick={generateAiExample}
+                disabled={aiExampleLoading}
+                className="gap-2"
+              >
+                {aiExampleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
+                {aiExample ? "Regenerate" : "Example"}
+              </Button>
+            </div>
+          </div>
+
+          {aiExampleError && (
+            <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <p className="text-muted-foreground">{aiExampleError}</p>
+            </div>
+          )}
+
+          {aiExample && (
+            <div className="space-y-3 rounded-md border bg-background p-4">
+              {aiExample.sentence && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">German</p>
+                  <p className="mt-1 text-base font-medium leading-relaxed">„{aiExample.sentence}"</p>
+                </div>
+              )}
+              {aiExample.translation && (
+                <div className="border-t pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">English</p>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">"{aiExample.translation}"</p>
+                </div>
+              )}
+              {(aiExample.wordNote || aiExample.grammarTip) && (
+                <div className="grid gap-2 border-t pt-3 sm:grid-cols-2">
+                  {aiExample.wordNote && (
+                    <div className="rounded-md bg-muted/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
+                      <p className="mt-1 text-sm leading-relaxed">{aiExample.wordNote}</p>
+                    </div>
+                  )}
+                  {aiExample.grammarTip && (
+                    <div className="rounded-md bg-muted/45 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
+                      <p className="mt-1 text-sm leading-relaxed">{aiExample.grammarTip}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {aiExample.vocabulary && aiExample.vocabulary.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 border-t pt-3">
+                  {aiExample.vocabulary.slice(0, 4).map((item, index) => (
+                    <Badge key={`${item.word}-${index}`} variant="secondary" className="rounded-full">
+                      {item.word} = {item.translation}
+                    </Badge>
+                  ))}
                 </div>
               )}
             </div>
