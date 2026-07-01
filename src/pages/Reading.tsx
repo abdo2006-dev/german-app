@@ -74,7 +74,7 @@ export default function Reading() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [translation, setTranslation] = useState<TranslationState | null>(null);
   const [translationCache, setTranslationCache] = useState<Record<string, CachedTranslation>>({});
-  const [autoSaveWords, setAutoSaveWords] = useState(true);
+  const [autoSaveWords, setAutoSaveWords] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [shownAnswers, setShownAnswers] = useState<Record<string, boolean>>({});
 
@@ -305,7 +305,7 @@ export default function Reading() {
                   <div>
                     <CardTitle>{selectedPassage.title}</CardTitle>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Click any German word to translate it. Save only the words you want to review.
+                      Click or select text to translate it. Use Save to Deck only for words or phrases you want to review.
                     </p>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => removePassage(selectedPassage)}>
@@ -320,7 +320,7 @@ export default function Reading() {
                       onCheckedChange={(value) => setAutoSaveWords(Boolean(value))}
                     />
                     <Label htmlFor="auto-save-words" className="cursor-pointer text-sm">
-                      Auto-save clicked words to linked deck
+                      Auto-save clicked words to linked deck (off by default)
                     </Label>
                   </div>
                   <ReadableText text={selectedPassage.text} onTranslate={translateText} savedWords={savedWords} />
