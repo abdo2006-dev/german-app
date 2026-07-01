@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, BookOpen, CheckCircle2, ExternalLink, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,13 +22,23 @@ type TranslationState = {
   loading: boolean;
   error?: string;
   saved: boolean;
+  anchor: { x: number; y: number };
 };
+
+type CachedTranslation = { translation: string; provider: string };
 
 const WORD_PATTERN = /^[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?$/;
 
 function normalizeWord(token: string) {
   return token
     .replace(/^[^A-Za-zÄÖÜäöüß]+|[^A-Za-zÄÖÜäöüß]+$/g, '')
+    .trim();
+}
+
+function normalizeSelection(text: string) {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/^[^A-Za-zÄÖÜäöüß]+|[^A-Za-zÄÖÜäöüß.!?]+$/g, '')
     .trim();
 }
 
@@ -63,7 +73,7 @@ export default function Reading() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [translation, setTranslation] = useState<TranslationState | null>(null);
-  const [translationCache, setTranslationCache] = useState<Record<string, string>>({});
+  const [translationCache, setTranslationCache] = useState<Record<string, CachedTranslation>>({});
   const [autoSaveWords, setAutoSaveWords] = useState(true);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [shownAnswers, setShownAnswers] = useState<Record<string, boolean>>({});
@@ -114,48 +124,52 @@ export default function Reading() {
     }
   }
 
-  async function translateWord(wordToken: string) {
+  async function translateText(queryText: string, anchor: { x: number; y: number }) {
     if (!selectedPassage) return;
 
-    const word = normalizeWord(wordToken);
-    if (!word) return;
+    const query = normalizeSelection(queryText);
+    if (!query) return;
 
-    const cacheKey = word.toLocaleLowerCase();
-    const sentence = findSentence(selectedPassage.text, word);
+    const cacheKey = query.toLocaleLowerCase();
+    const cached = translationCache[cacheKey];
+    const sentence = findSentence(selectedPassage.text, query);
 
     setTranslation({
-      word,
-      translation: translationCache[cacheKey] ?? '',
-      provider: translationCache[cacheKey] ? 'cache' : 'MyMemory',
+      word: query,
+      translation: cached?.translation ?? '',
+      provider: cached ? cached.provider : 'MyMemory',
       sentence,
-      loading: !translationCache[cacheKey],
+      loading: !cached,
       saved: savedWords.has(cacheKey),
+      anchor,
     });
 
     try {
-      const translated = translationCache[cacheKey] ?? await fetchTranslation(word);
-      setTranslationCache(prev => ({ ...prev, [cacheKey]: translated.translation }));
+      const translated = cached ?? await fetchTranslation(query);
+      setTranslationCache(prev => ({ ...prev, [cacheKey]: translated }));
       const existing = savedWords.has(cacheKey);
-      const saved = autoSaveWords ? Boolean(addReadingWordToDeck(selectedPassage.id, word, translated.translation, sentence)) : existing;
+      const saved = autoSaveWords ? Boolean(addReadingWordToDeck(selectedPassage.id, query, translated.translation, sentence)) : existing;
       setTranslation({
-        word,
+        word: query,
         translation: translated.translation,
         provider: translated.provider,
         sentence,
         loading: false,
         saved,
+        anchor,
       });
       if (autoSaveWords) {
         toast.success(existing ? 'Already in linked deck' : 'Saved to linked deck');
       }
     } catch (err: any) {
       setTranslation({
-        word,
+        word: query,
         translation: '',
         provider: 'MyMemory',
         sentence,
         loading: false,
         saved: savedWords.has(cacheKey),
+        anchor,
         error: err.message ?? 'Could not translate this word.',
       });
     }
@@ -309,13 +323,14 @@ export default function Reading() {
                       Auto-save clicked words to linked deck
                     </Label>
                   </div>
-                  <ReadableText text={selectedPassage.text} onWordClick={translateWord} savedWords={savedWords} />
+                  <ReadableText text={selectedPassage.text} onTranslate={translateText} savedWords={savedWords} />
                   {translation && (
-                    <TranslationPanel
+                    <TranslationBubble
                       state={translation}
                       deckName={selectedDeck?.name ?? 'linked deck'}
                       onSave={saveCurrentTranslation}
                       onRemove={removeCurrentTranslation}
+                      onClose={() => setTranslation(null)}
                     />
                   )}
                 </CardContent>
@@ -345,32 +360,70 @@ async function fetchTranslation(word: string): Promise<{ translation: string; pr
 
 function ReadableText({
   text,
-  onWordClick,
+  onTranslate,
   savedWords,
 }: {
   text: string;
-  onWordClick: (word: string) => void;
+  onTranslate: (text: string, anchor: { x: number; y: number }) => void;
   savedWords: Set<string>;
 }) {
+  function handleSelection(event: MouseEvent<HTMLDivElement>) {
+    const selection = window.getSelection();
+    const selectedText = normalizeSelection(selection?.toString() ?? '');
+    if (!selection || selectedText.length < 2) return;
+
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    if (!range || !event.currentTarget.contains(range.commonAncestorContainer)) return;
+
+    const rect = range.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+    onTranslate(selectedText, {
+      x: rect.left + rect.width / 2,
+      y: Math.max(rect.top, 96),
+    });
+  }
+
+  function handleWordClick(token: string, event: MouseEvent<HTMLSpanElement>) {
+    const selectedText = normalizeSelection(window.getSelection()?.toString() ?? '');
+    if (selectedText.length > 0) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    onTranslate(token, {
+      x: rect.left + rect.width / 2,
+      y: Math.max(rect.top, 96),
+    });
+  }
+
   return (
-    <div className="rounded-md border bg-background p-5 text-lg leading-9">
+    <div className="rounded-md border bg-background p-5 text-lg leading-9" onMouseUp={handleSelection}>
       {text.split(/\n{2,}/).map((paragraph, paragraphIndex) => (
         <p key={paragraphIndex} className="mb-4 last:mb-0">
           {tokenize(paragraph).map((token, index) => {
             if (!WORD_PATTERN.test(token)) return <span key={`${token}-${index}`}>{token}</span>;
             const saved = savedWords.has(token.toLocaleLowerCase());
             return (
-              <button
+              <span
                 key={`${token}-${index}`}
-                type="button"
-                onClick={() => onWordClick(token)}
+                role="button"
+                tabIndex={0}
+                onClick={(event) => handleWordClick(token, event)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    onTranslate(token, {
+                      x: rect.left + rect.width / 2,
+                      y: Math.max(rect.top, 96),
+                    });
+                  }
+                }}
                 className={cn(
-                  "rounded px-0.5 text-left transition-colors hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:outline-none focus:ring-1 focus:ring-primary",
+                  "cursor-pointer rounded px-0.5 text-left transition-colors hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:outline-none focus:ring-1 focus:ring-primary",
                   saved && "bg-green-100 text-green-900 underline decoration-green-600 decoration-2 underline-offset-4"
                 )}
               >
                 {token}
-              </button>
+              </span>
             );
           })}
         </p>
@@ -379,25 +432,40 @@ function ReadableText({
   );
 }
 
-function TranslationPanel({
+function TranslationBubble({
   state,
   deckName,
   onSave,
   onRemove,
+  onClose,
 }: {
   state: TranslationState;
   deckName: string;
   onSave: () => void;
   onRemove: () => void;
+  onClose: () => void;
 }) {
   return (
-    <div className="rounded-md border border-primary/20 bg-primary/5 p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div
+      className="fixed z-50 w-[min(360px,calc(100vw-24px))] rounded-md border border-primary/20 bg-popover p-4 text-popover-foreground shadow-xl"
+      style={{
+        left: Math.min(Math.max(state.anchor.x, 180), window.innerWidth - 180),
+        top: state.anchor.y,
+        transform: 'translate(-50%, calc(-100% - 12px))',
+      }}
+    >
+      <div className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-primary/20 bg-popover" />
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Clicked word</p>
-          <p className="mt-1 text-xl font-bold">{state.word}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Selected text</p>
+          <p className="mt-1 text-lg font-bold leading-snug">{state.word}</p>
         </div>
-        <Badge variant="secondary">{state.loading ? 'Translating...' : state.provider}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary">{state.loading ? 'Translating...' : state.provider}</Badge>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+            ×
+          </Button>
+        </div>
       </div>
       {state.loading ? (
         <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">

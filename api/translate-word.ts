@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Missing word.' });
   }
 
-  const cleanWord = word.trim().slice(0, 80);
+  const cleanWord = word.trim().slice(0, 480);
   const langpair = 'de|en';
   const url = `${MYMEMORY_URL}?q=${encodeURIComponent(cleanWord)}&langpair=${encodeURIComponent(langpair)}`;
 
