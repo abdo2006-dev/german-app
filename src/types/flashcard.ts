@@ -106,6 +106,26 @@ export interface DeckStats {
   leechCount: number;
 }
 
+export interface ReadingQuestion {
+  id: string;
+  type: 'multiple-choice' | 'short-answer';
+  question: string;
+  options?: string[];
+  correctAnswer: string;
+  explanation: string;
+  difficulty: 'detail' | 'inference' | 'main-idea' | 'vocabulary';
+}
+
+export interface ReadingPassage {
+  id: string;
+  title: string;
+  text: string;
+  deckId: string;
+  questions: ReadingQuestion[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Todo {
   id: string;
   text: string;

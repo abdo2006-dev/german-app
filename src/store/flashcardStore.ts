@@ -7,6 +7,7 @@ import { persist } from 'zustand/middleware';
 import {
   Folder, Deck, Card, DeckSettings, DEFAULT_DECK_SETTINGS,
   CardTemplate, Rating, ReviewLog, DeckStats, ParsedEntry, CardState, Todo,
+  ReadingPassage, ReadingQuestion,
 } from '@/types/flashcard';
 import { scheduleCard } from '@/lib/srs';
 
@@ -41,6 +42,7 @@ interface FlashcardState {
   decks: Deck[];
   cards: Card[];
   reviewLogs: ReviewLog[];
+  readingPassages: ReadingPassage[];
   todos: Todo[];
   /** Map of deckId → Set<cardId> for new cards introduced today */
   newCardsIntroducedToday: Record<string, string[]>;
@@ -84,6 +86,11 @@ interface FlashcardState {
   getWeakCards: (limit?: number) => Card[];
   getLeeches: () => Card[];
 
+  // Reading actions
+  createReadingPassage: (title: string, text: string, questions: ReadingQuestion[]) => ReadingPassage;
+  deleteReadingPassage: (id: string) => void;
+  addReadingWordToDeck: (passageId: string, word: string, translation: string, sentence: string) => Card | null;
+
   // Todo actions
   createTodo: (text: string, dueDate?: string) => Todo;
   updateTodo: (id: string, updates: Partial<Pick<Todo, 'text' | 'completed' | 'dueDate'>>) => void;
@@ -97,6 +104,7 @@ export const useFlashcardStore = create<FlashcardState>()(
       decks: [],
       cards: [],
       reviewLogs: [],
+      readingPassages: [],
       todos: [],
       newCardsIntroducedToday: {},
       newCardDateKey: '',
@@ -303,6 +311,82 @@ export const useFlashcardStore = create<FlashcardState>()(
 
       getLeeches: () => get().cards.filter(c => c.flags?.leech && !c.suspended),
 
+      createReadingPassage: (title, text, questions) => {
+        const now = new Date();
+        const cleanTitle = title.trim() || `Reading ${now.toLocaleDateString()}`;
+        const deck: Deck = {
+          id: generateId(),
+          folderId: null,
+          name: `Reading: ${cleanTitle}`,
+          settings: { ...DEFAULT_DECK_SETTINGS, newCardsPerDay: 9999 },
+          createdAt: now,
+          updatedAt: now,
+        };
+        const passage: ReadingPassage = {
+          id: generateId(),
+          title: cleanTitle,
+          text,
+          deckId: deck.id,
+          questions,
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((s) => ({
+          decks: [...s.decks, deck],
+          readingPassages: [passage, ...s.readingPassages],
+        }));
+        return passage;
+      },
+
+      deleteReadingPassage: (id) => {
+        const passage = get().readingPassages.find(p => p.id === id);
+        if (!passage) return;
+        set((s) => ({
+          readingPassages: s.readingPassages.filter(p => p.id !== id),
+          decks: s.decks.filter(d => d.id !== passage.deckId),
+          cards: s.cards.filter(c => c.deckId !== passage.deckId),
+          reviewLogs: s.reviewLogs.filter(l => l.deckId !== passage.deckId),
+        }));
+      },
+
+      addReadingWordToDeck: (passageId, word, translation, sentence) => {
+        const passage = get().readingPassages.find(p => p.id === passageId);
+        if (!passage) return null;
+        const normalized = word.trim().toLocaleLowerCase();
+        if (!normalized || !translation.trim()) return null;
+        const existing = get().cards.find(c =>
+          c.deckId === passage.deckId &&
+          c.germanWord.trim().toLocaleLowerCase() === normalized
+        );
+        if (existing) return existing;
+
+        const now = new Date();
+        const card: Card = {
+          id: generateId(),
+          deckId: passage.deckId,
+          germanWord: word.trim(),
+          englishMeaning: translation.trim(),
+          germanExample: sentence.trim(),
+          englishExample: '',
+          state: 'new',
+          template: 'german-to-english',
+          interval: 0,
+          ease: 2.5,
+          reps: 0,
+          lapses: 0,
+          stepIndex: 0,
+          lapseInterval: 0,
+          due: now,
+          suspended: false,
+          buried: false,
+          flags: {},
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((s) => ({ cards: [...s.cards, card] }));
+        return card;
+      },
+
       // Todos
       createTodo: (text, dueDate) => {
         const todo: Todo = { id: generateId(), text, completed: false, dueDate, createdAt: new Date(), updatedAt: new Date() };
@@ -321,6 +405,7 @@ export const useFlashcardStore = create<FlashcardState>()(
         decks: serializeDates(state.decks),
         cards: serializeDates(state.cards),
         reviewLogs: serializeDates(state.reviewLogs),
+        readingPassages: serializeDates(state.readingPassages),
         todos: serializeDates(state.todos),
         newCardsIntroducedToday: state.newCardsIntroducedToday,
         newCardDateKey: state.newCardDateKey,
@@ -345,6 +430,7 @@ export const useFlashcardStore = create<FlashcardState>()(
         state.reviewLogs = state.reviewLogs.map((l: any) => ({
           deckId: '', stateBefore: 'review', ...l,
         }));
+        state.readingPassages = deserializeDates(state.readingPassages ?? [], ['createdAt', 'updatedAt']);
         state.todos = deserializeDates(state.todos ?? [], ['createdAt', 'updatedAt']);
         if (!state.newCardsIntroducedToday) state.newCardsIntroducedToday = {};
         if (!state.newCardDateKey) state.newCardDateKey = '';
