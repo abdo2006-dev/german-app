@@ -90,6 +90,7 @@ interface FlashcardState {
   createReadingPassage: (title: string, text: string, questions: ReadingQuestion[]) => ReadingPassage;
   deleteReadingPassage: (id: string) => void;
   addReadingWordToDeck: (passageId: string, word: string, translation: string, sentence: string) => Card | null;
+  removeReadingWordFromDeck: (passageId: string, word: string) => boolean;
 
   // Todo actions
   createTodo: (text: string, dueDate?: string) => Todo;
@@ -385,6 +386,29 @@ export const useFlashcardStore = create<FlashcardState>()(
         };
         set((s) => ({ cards: [...s.cards, card] }));
         return card;
+      },
+
+      removeReadingWordFromDeck: (passageId, word) => {
+        const passage = get().readingPassages.find(p => p.id === passageId);
+        if (!passage) return false;
+        const normalized = word.trim().toLocaleLowerCase();
+        const card = get().cards.find(c =>
+          c.deckId === passage.deckId &&
+          c.germanWord.trim().toLocaleLowerCase() === normalized
+        );
+        if (!card) return false;
+
+        set((s) => ({
+          cards: s.cards.filter(c => c.id !== card.id),
+          reviewLogs: s.reviewLogs.filter(log => log.cardId !== card.id),
+          newCardsIntroducedToday: Object.fromEntries(
+            Object.entries(s.newCardsIntroducedToday).map(([deckId, ids]) => [
+              deckId,
+              ids.filter(id => id !== card.id),
+            ])
+          ),
+        }));
+        return true;
       },
 
       // Todos

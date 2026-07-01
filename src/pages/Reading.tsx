@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, BookOpen, CheckCircle2, ExternalLink, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { AlertCircle, BookOpen, CheckCircle2, ExternalLink, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,6 +21,7 @@ type TranslationState = {
   sentence: string;
   loading: boolean;
   error?: string;
+  saved: boolean;
 };
 
 const WORD_PATTERN = /^[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?$/;
@@ -52,6 +54,7 @@ export default function Reading() {
     createReadingPassage,
     deleteReadingPassage,
     addReadingWordToDeck,
+    removeReadingWordFromDeck,
   } = useFlashcardStore();
 
   const [title, setTitle] = useState('');
@@ -61,6 +64,7 @@ export default function Reading() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [translation, setTranslation] = useState<TranslationState | null>(null);
   const [translationCache, setTranslationCache] = useState<Record<string, string>>({});
+  const [autoSaveWords, setAutoSaveWords] = useState(true);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [shownAnswers, setShownAnswers] = useState<Record<string, boolean>>({});
 
@@ -71,6 +75,10 @@ export default function Reading() {
 
   const selectedDeck = selectedPassage ? decks.find(deck => deck.id === selectedPassage.deckId) : null;
   const selectedDeckCards = selectedPassage ? cards.filter(card => card.deckId === selectedPassage.deckId) : [];
+  const savedWords = useMemo(
+    () => new Set(selectedDeckCards.map(card => card.germanWord.trim().toLocaleLowerCase())),
+    [selectedDeckCards]
+  );
 
   async function createPassage() {
     if (text.trim().length < 80) {
@@ -106,7 +114,7 @@ export default function Reading() {
     }
   }
 
-  async function translateAndSave(wordToken: string) {
+  async function translateWord(wordToken: string) {
     if (!selectedPassage) return;
 
     const word = normalizeWord(wordToken);
@@ -121,21 +129,25 @@ export default function Reading() {
       provider: translationCache[cacheKey] ? 'cache' : 'MyMemory',
       sentence,
       loading: !translationCache[cacheKey],
+      saved: savedWords.has(cacheKey),
     });
 
     try {
       const translated = translationCache[cacheKey] ?? await fetchTranslation(word);
       setTranslationCache(prev => ({ ...prev, [cacheKey]: translated.translation }));
-      const existing = selectedDeckCards.some(card => card.germanWord.trim().toLocaleLowerCase() === cacheKey);
-      addReadingWordToDeck(selectedPassage.id, word, translated.translation, sentence);
+      const existing = savedWords.has(cacheKey);
+      const saved = autoSaveWords ? Boolean(addReadingWordToDeck(selectedPassage.id, word, translated.translation, sentence)) : existing;
       setTranslation({
         word,
         translation: translated.translation,
         provider: translated.provider,
         sentence,
         loading: false,
+        saved,
       });
-      toast.success(existing ? 'Already in linked deck' : 'Saved to linked deck');
+      if (autoSaveWords) {
+        toast.success(existing ? 'Already in linked deck' : 'Saved to linked deck');
+      }
     } catch (err: any) {
       setTranslation({
         word,
@@ -143,9 +155,26 @@ export default function Reading() {
         provider: 'MyMemory',
         sentence,
         loading: false,
+        saved: savedWords.has(cacheKey),
         error: err.message ?? 'Could not translate this word.',
       });
     }
+  }
+
+  function saveCurrentTranslation() {
+    if (!selectedPassage || !translation || !translation.translation || translation.error) return;
+    const card = addReadingWordToDeck(selectedPassage.id, translation.word, translation.translation, translation.sentence);
+    if (!card) return;
+    setTranslation(prev => prev ? { ...prev, saved: true } : prev);
+    toast.success('Saved to linked deck');
+  }
+
+  function removeCurrentTranslation() {
+    if (!selectedPassage || !translation) return;
+    const removed = removeReadingWordFromDeck(selectedPassage.id, translation.word);
+    if (!removed) return;
+    setTranslation(prev => prev ? { ...prev, saved: false } : prev);
+    toast.success('Removed from linked deck');
   }
 
   function removePassage(passage: ReadingPassage) {
@@ -262,7 +291,7 @@ export default function Reading() {
                   <div>
                     <CardTitle>{selectedPassage.title}</CardTitle>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Click any German word to translate and save it to the linked deck.
+                      Click any German word to translate it. Save only the words you want to review.
                     </p>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => removePassage(selectedPassage)}>
@@ -270,8 +299,25 @@ export default function Reading() {
                   </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <ReadableText text={selectedPassage.text} onWordClick={translateAndSave} />
-                  {translation && <TranslationPanel state={translation} deckName={selectedDeck?.name ?? 'linked deck'} />}
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/25 px-3 py-2">
+                    <Checkbox
+                      id="auto-save-words"
+                      checked={autoSaveWords}
+                      onCheckedChange={(value) => setAutoSaveWords(Boolean(value))}
+                    />
+                    <Label htmlFor="auto-save-words" className="cursor-pointer text-sm">
+                      Auto-save clicked words to linked deck
+                    </Label>
+                  </div>
+                  <ReadableText text={selectedPassage.text} onWordClick={translateWord} savedWords={savedWords} />
+                  {translation && (
+                    <TranslationPanel
+                      state={translation}
+                      deckName={selectedDeck?.name ?? 'linked deck'}
+                      onSave={saveCurrentTranslation}
+                      onRemove={removeCurrentTranslation}
+                    />
+                  )}
                 </CardContent>
               </Card>
 
@@ -297,19 +343,31 @@ async function fetchTranslation(word: string): Promise<{ translation: string; pr
   return { translation: data.translation, provider: data.provider ?? 'MyMemory' };
 }
 
-function ReadableText({ text, onWordClick }: { text: string; onWordClick: (word: string) => void }) {
+function ReadableText({
+  text,
+  onWordClick,
+  savedWords,
+}: {
+  text: string;
+  onWordClick: (word: string) => void;
+  savedWords: Set<string>;
+}) {
   return (
     <div className="rounded-md border bg-background p-5 text-lg leading-9">
       {text.split(/\n{2,}/).map((paragraph, paragraphIndex) => (
         <p key={paragraphIndex} className="mb-4 last:mb-0">
           {tokenize(paragraph).map((token, index) => {
             if (!WORD_PATTERN.test(token)) return <span key={`${token}-${index}`}>{token}</span>;
+            const saved = savedWords.has(token.toLocaleLowerCase());
             return (
               <button
                 key={`${token}-${index}`}
                 type="button"
                 onClick={() => onWordClick(token)}
-                className="rounded px-0.5 text-left transition-colors hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:outline-none focus:ring-1 focus:ring-primary"
+                className={cn(
+                  "rounded px-0.5 text-left transition-colors hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:outline-none focus:ring-1 focus:ring-primary",
+                  saved && "bg-green-100 text-green-900 underline decoration-green-600 decoration-2 underline-offset-4"
+                )}
               >
                 {token}
               </button>
@@ -321,7 +379,17 @@ function ReadableText({ text, onWordClick }: { text: string; onWordClick: (word:
   );
 }
 
-function TranslationPanel({ state, deckName }: { state: TranslationState; deckName: string }) {
+function TranslationPanel({
+  state,
+  deckName,
+  onSave,
+  onRemove,
+}: {
+  state: TranslationState;
+  deckName: string;
+  onSave: () => void;
+  onRemove: () => void;
+}) {
   return (
     <div className="rounded-md border border-primary/20 bg-primary/5 p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -347,7 +415,22 @@ function TranslationPanel({ state, deckName }: { state: TranslationState; deckNa
           {state.sentence && (
             <p className="rounded-md bg-background p-3 text-sm leading-relaxed text-muted-foreground">"{state.sentence}"</p>
           )}
-          <p className="text-xs text-muted-foreground">Saved into {deckName} for Anki-style review.</p>
+          <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              {state.saved ? `Saved into ${deckName} for Anki-style review.` : 'Translation only. Not saved to the deck yet.'}
+            </p>
+            {state.saved ? (
+              <Button variant="outline" size="sm" onClick={onRemove} className="gap-2">
+                <Trash2 className="h-4 w-4" />
+                Remove from Deck
+              </Button>
+            ) : (
+              <Button size="sm" onClick={onSave} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Save to Deck
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>
