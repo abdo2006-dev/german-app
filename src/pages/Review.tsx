@@ -15,7 +15,7 @@ import type { Card as CardType, Rating } from "@/types/flashcard";
 
 type QueueEntry = { cardId: string; isNew: boolean };
 type ExampleLevel = "A2" | "B1";
-type AiPracticeMode = "generate" | "check";
+type AiPracticeMode = "generate" | "check" | "ask";
 type CardExample = {
   sentence?: string;
   translation?: string;
@@ -36,6 +36,12 @@ type CardSentenceCheck = {
   wordFeedback?: string;
   rules?: { title: string; explanation: string; example?: string }[];
   vocabulary?: { word: string; translation: string; note?: string }[];
+};
+type CardQuestionAnswer = {
+  answer?: string;
+  quickContrast?: { term: string; meaning: string; register?: string; example?: string }[];
+  examples?: { german: string; english: string; note?: string }[];
+  ruleReminder?: string;
 };
 
 const ratingButtonClasses: Record<Rating, string> = {
@@ -71,6 +77,10 @@ export default function Review() {
   const [sentenceCheck, setSentenceCheck] = useState<CardSentenceCheck | null>(null);
   const [sentenceCheckLoading, setSentenceCheckLoading] = useState(false);
   const [sentenceCheckError, setSentenceCheckError] = useState<string | null>(null);
+  const [wordQuestion, setWordQuestion] = useState("");
+  const [wordAnswer, setWordAnswer] = useState<CardQuestionAnswer | null>(null);
+  const [wordAnswerLoading, setWordAnswerLoading] = useState(false);
+  const [wordAnswerError, setWordAnswerError] = useState<string | null>(null);
 
   const scope = useMemo(() => ({ deckIds: selectedDeckIds }), [selectedDeckIds]);
 
@@ -178,6 +188,10 @@ export default function Review() {
     setSentenceCheck(null);
     setSentenceCheckError(null);
     setSentenceCheckLoading(false);
+    setWordQuestion("");
+    setWordAnswer(null);
+    setWordAnswerError(null);
+    setWordAnswerLoading(false);
   }, [currentCardId]);
 
   const generateAiExample = useCallback(async () => {
@@ -242,6 +256,38 @@ export default function Review() {
       setSentenceCheckLoading(false);
     }
   }, [currentCard, ownSentence]);
+
+  const askGroqAboutWord = useCallback(async () => {
+    if (!currentCard || wordQuestion.trim().length < 2) return;
+
+    setWordAnswerLoading(true);
+    setWordAnswerError(null);
+
+    try {
+      const res = await fetch("/api/german-helper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "card-question",
+          level: "B1",
+          input: wordQuestion.trim(),
+          germanWord: currentCard.germanWord,
+          englishMeaning: currentCard.englishMeaning,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `API error ${res.status}`);
+      }
+
+      setWordAnswer(data.result as CardQuestionAnswer);
+    } catch (err: any) {
+      setWordAnswerError(err.message ?? "Could not answer this card question.");
+    } finally {
+      setWordAnswerLoading(false);
+    }
+  }, [currentCard, wordQuestion]);
 
   const handleRate = useCallback((rating: Rating) => {
     if (!currentCard) return;
@@ -440,15 +486,16 @@ export default function Review() {
               <Sparkles className="h-4 w-4 text-primary" />
               <div>
                 <p className="text-sm font-semibold">Groq practice</p>
-                <p className="text-xs text-muted-foreground">Use this word in context.</p>
+                <p className="text-xs text-muted-foreground">Use this word in context or ask about it.</p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1">
             {([
               ["generate", "Generate"],
               ["check", "Check mine"],
+              ["ask", "Ask Groq"],
             ] as [AiPracticeMode, string][]).map(([mode, label]) => (
               <button
                 key={mode}
@@ -539,7 +586,7 @@ export default function Review() {
                 </div>
               )}
             </>
-          ) : (
+          ) : aiPracticeMode === "check" ? (
             <>
               <div className="space-y-2">
                 <Textarea
@@ -615,6 +662,39 @@ export default function Review() {
                 </div>
               )}
             </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Textarea
+                  value={wordQuestion}
+                  onChange={(event) => {
+                    setWordQuestion(event.target.value);
+                    setWordAnswer(null);
+                    setWordAnswerError(null);
+                  }}
+                  placeholder={`Ask about "${currentCard.germanWord}"... e.g. What is the difference between it and brauchen?`}
+                  className="min-h-[86px] resize-none bg-background text-sm leading-relaxed"
+                />
+                <Button
+                  size="sm"
+                  onClick={askGroqAboutWord}
+                  disabled={wordAnswerLoading || wordQuestion.trim().length < 2}
+                  className="w-full gap-2"
+                >
+                  {wordAnswerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Ask About This Word
+                </Button>
+              </div>
+
+              {wordAnswerError && (
+                <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <p className="text-muted-foreground">{wordAnswerError}</p>
+                </div>
+              )}
+
+              {wordAnswer && <WordQuestionAnswerBlock answer={wordAnswer} />}
+            </>
           )}
         </CardContent>
       </Card>
@@ -643,6 +723,62 @@ export default function Review() {
       )}
 
       <p className="text-center text-xs text-muted-foreground">Space to reveal · 1–4 to rate</p>
+    </div>
+  );
+}
+
+function WordQuestionAnswerBlock({ answer }: { answer: CardQuestionAnswer }) {
+  return (
+    <div className="space-y-3 rounded-md border bg-background p-4">
+      {answer.answer && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Answer</p>
+          <p className="mt-1 text-sm leading-relaxed">{answer.answer}</p>
+        </div>
+      )}
+
+      {answer.quickContrast && answer.quickContrast.length > 0 && (
+        <div className="overflow-hidden rounded-md border">
+          <div className="grid grid-cols-[1fr_1.2fr_1fr] bg-muted/50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <span>Word</span>
+            <span>Meaning</span>
+            <span>Register</span>
+          </div>
+          {answer.quickContrast.slice(0, 4).map((item, index) => (
+            <div
+              key={`${item.term}-${index}`}
+              className="grid grid-cols-[1fr_1.2fr_1fr] gap-2 border-t px-3 py-2 text-sm"
+            >
+              <span className="font-semibold">{item.term}</span>
+              <span className="text-muted-foreground">{item.meaning}</span>
+              <span className="text-muted-foreground">{item.register || "neutral"}</span>
+              {item.example && (
+                <p className="col-span-3 rounded-md bg-muted/35 p-2 text-sm leading-relaxed">{item.example}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {answer.examples && answer.examples.length > 0 && (
+        <div className="space-y-2 border-t pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Examples</p>
+          {answer.examples.slice(0, 3).map((example, index) => (
+            <div key={`${example.german}-${index}`} className="rounded-md bg-muted/45 p-3">
+              <p className="text-sm font-medium leading-relaxed">„{example.german}"</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">"{example.english}"</p>
+              {example.note && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{example.note}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {answer.ruleReminder && (
+        <div className="rounded-md bg-primary/5 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rule reminder</p>
+          <p className="mt-1 text-sm leading-relaxed">{answer.ruleReminder}</p>
+        </div>
+      )}
     </div>
   );
 }

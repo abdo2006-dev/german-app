@@ -20,14 +20,15 @@ const navItems = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const brandMark = "flex shrink-0 items-center justify-center rounded-md bg-[#111827] font-bold text-[#fff7ed] shadow-sm";
 
   return (
     <div className="min-h-screen bg-background">
       {/* Desktop sidebar */}
       <aside className="hidden md:fixed md:inset-y-0 md:left-0 md:flex md:w-60 md:flex-col bg-sidebar border-r border-sidebar-border">
         <div className="flex h-16 items-center gap-2 px-6 border-b border-sidebar-border">
-          <span className="text-2xl">🇩🇪</span>
-          <h1 className="font-serif text-xl font-bold text-sidebar-foreground">GermanCards</h1>
+          <span className={cn(brandMark, "h-8 w-8 text-sm")}>W</span>
+          <h1 className="font-serif text-xl font-bold text-sidebar-foreground">Wortwise</h1>
         </div>
         <nav className="flex-1 py-5 px-3 space-y-0.5">
           {navItems.map((item) => (
@@ -54,8 +55,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile header */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-background border-b border-border z-50 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
-          <span className="text-lg">🇩🇪</span>
-          <h1 className="font-serif text-base font-bold">GermanCards</h1>
+          <span className={cn(brandMark, "h-7 w-7 text-xs")}>W</span>
+          <h1 className="font-serif text-base font-bold">Wortwise</h1>
         </div>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
           {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

@@ -4,7 +4,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
-type HelperMode = 'sentence' | 'paragraph' | 'card-example' | 'card-sentence';
+type HelperMode = 'sentence' | 'paragraph' | 'card-example' | 'card-sentence' | 'card-question';
 type HelperLevel = 'A2' | 'B1' | 'both';
 
 function cleanJson(content: string) {
@@ -123,6 +123,33 @@ Return JSON with this exact shape:
 The A2 version must stay simple. The B1 version may use connectors/subordinate clauses when natural. If the learner did not use the flashcard word, gently include it in the A2 and B1 alternatives and set usesFlashcardWord to false.`;
   }
 
+  if (mode === 'card-question') {
+    const germanWord = card?.germanWord || '';
+    const englishMeaning = card?.englishMeaning || '';
+
+    return `${levelRules}
+
+Task: Answer the learner's question about a German flashcard word. This is not a sentence correction task.
+Flashcard German word: ${germanWord}
+Flashcard English meaning: ${englishMeaning}
+Learner question: ${input}
+
+Return JSON with this exact shape:
+{
+  "mode": "card-question",
+  "answer": "clear direct answer to the learner's question",
+  "quickContrast": [
+    { "term": "German term", "meaning": "English meaning", "register": "formal/informal/neutral or empty string", "example": "short German example" }
+  ],
+  "examples": [
+    { "german": "German example sentence", "english": "English translation", "note": "why this example matters or empty string" }
+  ],
+  "ruleReminder": "one short grammar or usage reminder connected to the question"
+}
+
+Keep the answer practical for reviewing this card. If the learner compares synonyms, explain differences in register, frequency, grammar, case, and context. Include the flashcard word in at least one example. Use accessible A2/B1 language, but do not oversimplify important nuance.`;
+  }
+
   return `${levelRules}
 
 Task: Use as many of these German words as naturally possible in a short paragraph.
@@ -165,8 +192,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const helperMode = mode as HelperMode;
   const helperLevel = level as HelperLevel;
 
-  if (helperMode !== 'sentence' && helperMode !== 'paragraph' && helperMode !== 'card-example' && helperMode !== 'card-sentence') {
-    return res.status(400).json({ error: 'Mode must be sentence, paragraph, card-example, or card-sentence.' });
+  if (helperMode !== 'sentence' && helperMode !== 'paragraph' && helperMode !== 'card-example' && helperMode !== 'card-sentence' && helperMode !== 'card-question') {
+    return res.status(400).json({ error: 'Mode must be sentence, paragraph, card-example, card-sentence, or card-question.' });
   }
 
   if (!['A2', 'B1', 'both'].includes(helperLevel)) {
