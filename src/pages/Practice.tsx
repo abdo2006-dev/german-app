@@ -88,7 +88,7 @@ export default function Practice() {
 
   const start = () => {
     const ids = [...selectedDeckIds].join(",");
-    navigate(`/review?deckIds=${encodeURIComponent(ids)}`);
+    navigate(`/review?deckIds=${encodeURIComponent(ids)}&fresh=1`);
   };
 
   const allDecks = [...(decksByFolder.entries())];

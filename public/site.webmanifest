@@ -1,0 +1,17 @@
+{
+  "name": "Wortwise",
+  "short_name": "Wortwise",
+  "description": "German vocabulary, grammar, reading, and Anki-style review in one focused study app.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffaf3",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

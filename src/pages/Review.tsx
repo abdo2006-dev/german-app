@@ -44,6 +44,19 @@ type CardQuestionAnswer = {
   examples?: { german: string; english: string; note?: string }[];
   ruleReminder?: string;
 };
+type PersistedReviewSession = {
+  version: 1;
+  deckIdsParam: string;
+  seed: number;
+  queue: QueueEntry[];
+  currentCardId: string | null;
+  revealed: boolean;
+  sessionStats: { reviewed: number; again: number; hard: number; good: number; easy: number };
+  isComplete: boolean;
+  waitingUntil: string | null;
+  buriedSiblingKeys: string[];
+  updatedAt: string;
+};
 
 const ratingButtonClasses: Record<Rating, string> = {
   again: "rating-btn-again",
@@ -51,11 +64,45 @@ const ratingButtonClasses: Record<Rating, string> = {
   good: "rating-btn-good",
   easy: "rating-btn-easy",
 };
+const REVIEW_SESSION_VERSION = 1;
+
+function getReviewSessionKey(deckIdsParam: string) {
+  return `wortwise-review-session:${deckIdsParam}`;
+}
+
+function readReviewSession(deckIdsParam: string): PersistedReviewSession | null {
+  try {
+    const raw = window.localStorage.getItem(getReviewSessionKey(deckIdsParam));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedReviewSession;
+    if (parsed.version !== REVIEW_SESSION_VERSION || parsed.deckIdsParam !== deckIdsParam) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeReviewSession(session: PersistedReviewSession) {
+  try {
+    window.localStorage.setItem(getReviewSessionKey(session.deckIdsParam), JSON.stringify(session));
+  } catch {
+    // Storage can be unavailable in private browsing; review still works without resume.
+  }
+}
+
+function clearReviewSession(deckIdsParam: string) {
+  try {
+    window.localStorage.removeItem(getReviewSessionKey(deckIdsParam));
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 export default function Review() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const deckIdsParam = searchParams.get("deckIds");
+  const freshSession = searchParams.get("fresh") === "1";
   const selectedDeckIds = useMemo(() => (deckIdsParam ? deckIdsParam.split(",") : []), [deckIdsParam]);
 
   const { decks, cards, reviewCard, buryCard, markNewCardIntroduced, updateCard } = useFlashcardStore();
@@ -160,9 +207,45 @@ export default function Review() {
     setIsComplete(true);
   }, [buildSessionQueue, scope]);
 
-  // Initialize
+  // Initialize or restore an in-progress session. A refresh should resume; an explicit
+  // Start Session action passes fresh=1 and clears the saved session first.
   useEffect(() => {
     if (!deckIdsParam) { navigate("/practice", { replace: true }); return; }
+
+    if (freshSession) {
+      clearReviewSession(deckIdsParam);
+      navigate(`/review?deckIds=${encodeURIComponent(deckIdsParam)}`, { replace: true });
+      return;
+    }
+
+    const state = useFlashcardStore.getState();
+    const restored = readReviewSession(deckIdsParam);
+    if (restored) {
+      const selected = new Set(selectedDeckIds);
+      const isValidCard = (cardId: string | null) => {
+        if (!cardId) return false;
+        const card = state.cards.find(c => c.id === cardId);
+        return Boolean(card && selected.has(card.deckId));
+      };
+      const validQueue = restored.queue.filter(item => isValidCard(item.cardId));
+      const restoredCurrentCardId = isValidCard(restored.currentCardId)
+        ? restored.currentCardId
+        : validQueue[0]?.cardId ?? null;
+
+      if (restoredCurrentCardId || restored.waitingUntil || restored.isComplete) {
+        setSeed(restored.seed || Date.now());
+        setQueue(validQueue);
+        setCurrentCardId(restoredCurrentCardId);
+        setRevealed(Boolean(restored.revealed && restoredCurrentCardId));
+        setSessionStats(restored.sessionStats);
+        setWaitingUntil(restored.waitingUntil ? new Date(restored.waitingUntil) : null);
+        setIsComplete(restored.isComplete);
+        buriedSiblingKeys.current = new Set(restored.buriedSiblingKeys);
+        startTime.current = Date.now();
+        return;
+      }
+    }
+
     setSeed(Date.now());
     setIsComplete(false);
     setSessionStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
@@ -170,7 +253,27 @@ export default function Review() {
     buriedSiblingKeys.current = new Set();
     startTime.current = Date.now();
     pickNext(new Date());
-  }, [deckIdsParam]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deckIdsParam, freshSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!deckIdsParam || freshSession) return;
+    const hasSessionState = Boolean(currentCardId || waitingUntil || isComplete || queue.length > 0 || sessionStats.reviewed > 0);
+    if (!hasSessionState) return;
+
+    writeReviewSession({
+      version: REVIEW_SESSION_VERSION,
+      deckIdsParam,
+      seed,
+      queue,
+      currentCardId,
+      revealed,
+      sessionStats,
+      isComplete,
+      waitingUntil: waitingUntil ? waitingUntil.toISOString() : null,
+      buriedSiblingKeys: [...buriedSiblingKeys.current],
+      updatedAt: new Date().toISOString(),
+    });
+  }, [deckIdsParam, freshSession, seed, queue, currentCardId, revealed, sessionStats, isComplete, waitingUntil]);
 
   // Timer for waiting state
   useEffect(() => {

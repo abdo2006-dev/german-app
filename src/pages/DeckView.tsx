@@ -207,7 +207,7 @@ export default function DeckView() {
         </Link>
         
         {(stats.dueCount > 0 || newCardsAvailable > 0) && (
-          <Link to={`/review?deckIds=${deck.id}`}>
+          <Link to={`/review?deckIds=${deck.id}&fresh=1`}>
             <Button className="gap-2">
               <Play className="h-4 w-4" />
               Study ({stats.dueCount > 0 ? `${stats.dueCount} due` : `${newCardsAvailable} new`})

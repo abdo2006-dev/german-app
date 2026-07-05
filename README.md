@@ -1,4 +1,4 @@
-# GermanCards — Spaced Repetition German Learning App
+# Wortwise — Spaced Repetition German Learning App
 
 A production-ready German learning web app with proper spaced repetition (SM-2 algorithm), grammar lessons (A1–C1), AI-powered speaking topics, and study task management.
 
