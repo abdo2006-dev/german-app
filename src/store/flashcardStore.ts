@@ -63,7 +63,7 @@ interface FlashcardState {
   // Card actions
   createCard: (deckId: string, entry: ParsedEntry, template: CardTemplate) => Card;
   bulkCreateCards: (deckId: string, entries: ParsedEntry[], templateMode: DeckSettings['templateMode']) => Card[];
-  updateCard: (id: string, updates: Partial<Pick<Card, 'germanWord' | 'englishMeaning' | 'germanExample' | 'englishExample'>>) => void;
+  updateCard: (id: string, updates: Partial<Pick<Card, 'germanWord' | 'englishMeaning' | 'germanExample' | 'englishExample' | 'notes'>>) => void;
   deleteCard: (id: string) => void;
   moveCard: (cardId: string, deckId: string) => void;
   suspendCard: (id: string, suspended: boolean) => void;
@@ -146,6 +146,7 @@ export const useFlashcardStore = create<FlashcardState>()(
       createCard: (deckId, entry, template) => {
         const card: Card = {
           id: generateId(), deckId, ...entry, state: 'new', template,
+          notes: '',
           interval: 0, ease: 2.5, reps: 0, lapses: 0, stepIndex: 0, lapseInterval: 0,
           due: new Date(), suspended: false, buried: false, flags: {},
           createdAt: new Date(), updatedAt: new Date(),
@@ -163,6 +164,7 @@ export const useFlashcardStore = create<FlashcardState>()(
           for (const template of templates) {
             newCards.push({
               id: generateId(), deckId, ...entry, state: 'new', template,
+              notes: '',
               interval: 0, ease: 2.5, reps: 0, lapses: 0, stepIndex: 0, lapseInterval: 0,
               due: now, suspended: false, buried: false, flags: {},
               createdAt: now, updatedAt: now,
@@ -369,6 +371,7 @@ export const useFlashcardStore = create<FlashcardState>()(
           englishMeaning: translation.trim(),
           germanExample: sentence.trim(),
           englishExample: '',
+          notes: '',
           state: 'new',
           template: 'german-to-english',
           interval: 0,
@@ -446,7 +449,7 @@ export const useFlashcardStore = create<FlashcardState>()(
         state.cards = deserializeDates(state.cards, ['createdAt', 'updatedAt', 'due']);
         // Migrate old cards missing new fields
         state.cards = state.cards.map((c: any) => ({
-          lapseInterval: 0, flags: {}, ...c,
+          lapseInterval: 0, flags: {}, notes: '', ...c,
           settings: c.settings ? { leechThreshold: 8, ...c.settings } : c.settings,
         }));
         state.reviewLogs = deserializeDates(state.reviewLogs, ['reviewedAt']);

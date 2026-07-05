@@ -11,12 +11,14 @@ import {
   Pencil,
   Trash2,
   Pause,
-  PlayCircle
+  PlayCircle,
+  StickyNote
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -70,6 +72,7 @@ export default function DeckView() {
   const [editEnglish, setEditEnglish] = useState('');
   const [editGermanEx, setEditGermanEx] = useState('');
   const [editEnglishEx, setEditEnglishEx] = useState('');
+  const [editNotes, setEditNotes] = useState('');
 
   // Settings form state
   const [newCardsPerDay, setNewCardsPerDay] = useState(20);
@@ -100,6 +103,7 @@ export default function DeckView() {
     setEditEnglish(card.englishMeaning);
     setEditGermanEx(card.germanExample);
     setEditEnglishEx(card.englishExample);
+    setEditNotes(card.notes ?? '');
   };
 
   const handleSaveCard = () => {
@@ -109,6 +113,7 @@ export default function DeckView() {
       englishMeaning: editEnglish,
       germanExample: editGermanEx,
       englishExample: editEnglishEx,
+      notes: editNotes,
     });
     toast.success('Card updated');
     setEditingCard(null);
@@ -252,6 +257,12 @@ export default function DeckView() {
                         {card.germanExample}
                       </p>
                     )}
+                    {card.notes && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <StickyNote className="h-3.5 w-3.5" />
+                        Saved note
+                      </div>
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-2 shrink-0">
@@ -348,6 +359,18 @@ export default function DeckView() {
                 value={editEnglishEx}
                 onChange={(e) => setEditEnglishEx(e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Hidden Card Note</Label>
+              <Textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Add a private note, synonym contrast, grammar reminder, or Groq explanation..."
+                className="min-h-[120px] resize-y"
+              />
+              <p className="text-xs text-muted-foreground">
+                Notes stay hidden during review until you open the card notes panel.
+              </p>
             </div>
           </div>
           <DialogFooter>

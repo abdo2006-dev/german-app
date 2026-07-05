@@ -54,6 +54,7 @@ export interface Card {
   englishMeaning: string;
   germanExample: string;
   englishExample: string;
+  notes: string;
   state: CardState;
   template: CardTemplate;
   interval: number;

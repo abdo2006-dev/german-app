@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { AlertCircle, ArrowLeft, CheckCircle, Lightbulb, Loader2, Sparkles, X, Zap, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, ChevronDown, Lightbulb, Loader2, Save, Sparkles, StickyNote, X, Zap, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { useFlashcardStore } from "@/store/flashcardStore";
 import { getNextIntervals } from "@/lib/srs";
 import { buildDueQueue, getNextLearningDueAt, getSiblingKey, stableShuffle } from "@/lib/reviewQueue";
 import type { Card as CardType, Rating } from "@/types/flashcard";
+import { toast } from "sonner";
 
 type QueueEntry = { cardId: string; isNew: boolean };
 type ExampleLevel = "A2" | "B1";
@@ -57,7 +58,7 @@ export default function Review() {
   const deckIdsParam = searchParams.get("deckIds");
   const selectedDeckIds = useMemo(() => (deckIdsParam ? deckIdsParam.split(",") : []), [deckIdsParam]);
 
-  const { decks, cards, reviewCard, buryCard, markNewCardIntroduced } = useFlashcardStore();
+  const { decks, cards, reviewCard, buryCard, markNewCardIntroduced, updateCard } = useFlashcardStore();
 
   const [seed, setSeed] = useState(() => Date.now());
   const [queue, setQueue] = useState<QueueEntry[]>([]);
@@ -81,6 +82,8 @@ export default function Review() {
   const [wordAnswer, setWordAnswer] = useState<CardQuestionAnswer | null>(null);
   const [wordAnswerLoading, setWordAnswerLoading] = useState(false);
   const [wordAnswerError, setWordAnswerError] = useState<string | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
 
   const scope = useMemo(() => ({ deckIds: selectedDeckIds }), [selectedDeckIds]);
 
@@ -192,6 +195,8 @@ export default function Review() {
     setWordAnswer(null);
     setWordAnswerError(null);
     setWordAnswerLoading(false);
+    setNotesOpen(false);
+    setNoteDraft(currentCard?.notes ?? "");
   }, [currentCardId]);
 
   const generateAiExample = useCallback(async () => {
@@ -288,6 +293,66 @@ export default function Review() {
       setWordAnswerLoading(false);
     }
   }, [currentCard, wordQuestion]);
+
+  const saveCardNotes = useCallback((notes: string) => {
+    if (!currentCard) return;
+
+    const german = currentCard.germanWord.trim().toLocaleLowerCase();
+    const english = currentCard.englishMeaning.trim().toLocaleLowerCase();
+    const siblingCards = cards.filter(card =>
+      card.deckId === currentCard.deckId &&
+      card.germanWord.trim().toLocaleLowerCase() === german &&
+      card.englishMeaning.trim().toLocaleLowerCase() === english
+    );
+
+    for (const card of siblingCards) {
+      updateCard(card.id, { notes });
+    }
+
+    setNoteDraft(notes);
+    toast.success(notes.trim() ? "Card note saved" : "Card note cleared");
+  }, [cards, currentCard, updateCard]);
+
+  const saveGroqAnswerToNotes = useCallback((answer: CardQuestionAnswer) => {
+    if (!currentCard) return;
+
+    const blocks: string[] = [];
+    const question = wordQuestion.trim();
+    blocks.push(`Groq note for ${currentCard.germanWord}`);
+    if (question) blocks.push(`Question: ${question}`);
+    if (answer.answer) blocks.push(`Answer: ${answer.answer}`);
+
+    if (answer.quickContrast?.length) {
+      blocks.push(
+        "Quick contrast:",
+        ...answer.quickContrast.slice(0, 4).map(item => {
+          const register = item.register ? ` (${item.register})` : "";
+          const example = item.example ? ` Example: ${item.example}` : "";
+          return `- ${item.term}: ${item.meaning}${register}.${example}`;
+        })
+      );
+    }
+
+    if (answer.examples?.length) {
+      blocks.push(
+        "Examples:",
+        ...answer.examples.slice(0, 3).map(item => `- ${item.german} = ${item.english}${item.note ? ` (${item.note})` : ""}`)
+      );
+    }
+
+    if (answer.ruleReminder) {
+      blocks.push(`Rule reminder: ${answer.ruleReminder}`);
+    }
+
+    const formatted = blocks.join("\n");
+    const existing = currentCard.notes?.trim();
+    const nextNotes = existing && !existing.includes(formatted)
+      ? `${existing}\n\n---\n${formatted}`
+      : existing || formatted;
+
+    saveCardNotes(nextNotes);
+    setNotesOpen(false);
+  }, [currentCard, saveCardNotes, wordQuestion]);
 
   const handleRate = useCallback((rating: Rating) => {
     if (!currentCard) return;
@@ -474,6 +539,61 @@ export default function Review() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-muted bg-muted/10 shadow-sm">
+        <CardContent className="p-4">
+          <button
+            type="button"
+            onClick={() => setNotesOpen(open => !open)}
+            className="flex w-full items-center justify-between gap-3 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <StickyNote className="h-4 w-4 text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Card notes</p>
+                <p className="text-xs text-muted-foreground">
+                  {currentCard.notes?.trim() ? "Saved note available" : "No note saved yet"}
+                </p>
+              </div>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", notesOpen && "rotate-180")} />
+          </button>
+
+          {notesOpen && (
+            <div className="mt-4 space-y-3 border-t pt-4">
+              <Textarea
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                placeholder={`Save a note for "${currentCard.germanWord}"...`}
+                className="min-h-[120px] resize-y bg-background text-sm leading-relaxed"
+              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                {currentCard.notes?.trim() && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => saveCardNotes("")}
+                    className="sm:w-auto"
+                  >
+                    Clear Note
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => saveCardNotes(noteDraft)}
+                  disabled={noteDraft === (currentCard.notes ?? "")}
+                  className="gap-2 sm:w-auto"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Note
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
@@ -693,7 +813,12 @@ export default function Review() {
                 </div>
               )}
 
-              {wordAnswer && <WordQuestionAnswerBlock answer={wordAnswer} />}
+              {wordAnswer && (
+                <WordQuestionAnswerBlock
+                  answer={wordAnswer}
+                  onSave={() => saveGroqAnswerToNotes(wordAnswer)}
+                />
+              )}
             </>
           )}
         </CardContent>
@@ -727,11 +852,28 @@ export default function Review() {
   );
 }
 
-function WordQuestionAnswerBlock({ answer }: { answer: CardQuestionAnswer }) {
+function WordQuestionAnswerBlock({
+  answer,
+  onSave,
+}: {
+  answer: CardQuestionAnswer;
+  onSave: () => void;
+}) {
   return (
     <div className="space-y-3 rounded-md border bg-background p-4">
-      {answer.answer && (
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Groq answer</p>
+          <p className="text-sm text-muted-foreground">Save useful explanations to this card so you do not need to ask again.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onSave} className="gap-2 sm:shrink-0">
+          <Save className="h-4 w-4" />
+          Save to Notes
+        </Button>
+      </div>
+
+      {answer.answer && (
+        <div className="border-t pt-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Answer</p>
           <p className="mt-1 text-sm leading-relaxed">{answer.answer}</p>
         </div>
