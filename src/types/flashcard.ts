@@ -47,6 +47,17 @@ export interface Deck {
 export type CardState = 'new' | 'learning' | 'review' | 'relearning';
 export type CardTemplate = 'german-to-english' | 'english-to-german';
 
+export interface GeneratedCardExample {
+  id: string;
+  level: 'A2' | 'B1';
+  sentence: string;
+  translation: string;
+  wordNote: string;
+  grammarTip: string;
+  vocabulary: { word: string; translation: string; note?: string }[];
+  createdAt: string;
+}
+
 export interface Card {
   id: string;
   deckId: string;
@@ -55,6 +66,7 @@ export interface Card {
   germanExample: string;
   englishExample: string;
   notes: string;
+  generatedExamples: GeneratedCardExample[];
   state: CardState;
   template: CardTemplate;
   interval: number;

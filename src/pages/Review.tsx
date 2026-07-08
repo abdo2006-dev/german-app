@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { AlertCircle, ArrowLeft, CheckCircle, ChevronDown, Lightbulb, Loader2, Save, Sparkles, StickyNote, X, Zap, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, ChevronDown, Lightbulb, Loader2, Save, Sparkles, StickyNote, Trash2, X, Zap, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useFlashcardStore } from "@/store/flashcardStore";
 import { getNextIntervals } from "@/lib/srs";
 import { buildDueQueue, getNextLearningDueAt, getSiblingKey, stableShuffle } from "@/lib/reviewQueue";
-import type { Card as CardType, Rating } from "@/types/flashcard";
+import type { Card as CardType, GeneratedCardExample, Rating } from "@/types/flashcard";
 import { toast } from "sonner";
 
 type QueueEntry = { cardId: string; isNew: boolean };
@@ -96,6 +96,20 @@ function clearReviewSession(deckIdsParam: string) {
   } catch {
     // Ignore storage failures.
   }
+}
+
+function makeSavedExample(example: CardExample, level: ExampleLevel): GeneratedCardExample | null {
+  if (!example.sentence?.trim()) return null;
+  return {
+    id: crypto.randomUUID(),
+    level,
+    sentence: example.sentence.trim(),
+    translation: example.translation?.trim() ?? "",
+    wordNote: example.wordNote?.trim() ?? "",
+    grammarTip: example.grammarTip?.trim() ?? "",
+    vocabulary: example.vocabulary ?? [],
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export default function Review() {
@@ -302,6 +316,57 @@ export default function Review() {
     setNoteDraft(currentCard?.notes ?? "");
   }, [currentCardId]);
 
+  const saveGeneratedExample = useCallback((example: CardExample) => {
+    if (!currentCard) return;
+    const savedExample = makeSavedExample(example, exampleLevel);
+    if (!savedExample) return;
+
+    const german = currentCard.germanWord.trim().toLocaleLowerCase();
+    const english = currentCard.englishMeaning.trim().toLocaleLowerCase();
+    const siblingCards = cards.filter(card =>
+      card.deckId === currentCard.deckId &&
+      card.germanWord.trim().toLocaleLowerCase() === german &&
+      card.englishMeaning.trim().toLocaleLowerCase() === english
+    );
+
+    let saved = false;
+    for (const card of siblingCards) {
+      const existing = card.generatedExamples ?? [];
+      const alreadySaved = existing.some(item =>
+        item.level === savedExample.level &&
+        item.sentence.trim().toLocaleLowerCase() === savedExample.sentence.trim().toLocaleLowerCase()
+      );
+      if (alreadySaved) continue;
+      updateCard(card.id, { generatedExamples: [...existing, savedExample] });
+      saved = true;
+    }
+
+    if (saved) {
+      toast.success("Generated example saved to this card");
+    } else {
+      toast.info("That generated example is already saved");
+    }
+  }, [cards, currentCard, exampleLevel, updateCard]);
+
+  const removeGeneratedExample = useCallback((exampleId: string) => {
+    if (!currentCard) return;
+
+    const german = currentCard.germanWord.trim().toLocaleLowerCase();
+    const english = currentCard.englishMeaning.trim().toLocaleLowerCase();
+    const siblingCards = cards.filter(card =>
+      card.deckId === currentCard.deckId &&
+      card.germanWord.trim().toLocaleLowerCase() === german &&
+      card.englishMeaning.trim().toLocaleLowerCase() === english
+    );
+
+    for (const card of siblingCards) {
+      updateCard(card.id, {
+        generatedExamples: (card.generatedExamples ?? []).filter(example => example.id !== exampleId),
+      });
+    }
+    toast.success("Saved example removed");
+  }, [cards, currentCard, updateCard]);
+
   const generateAiExample = useCallback(async () => {
     if (!currentCard) return;
 
@@ -325,13 +390,15 @@ export default function Review() {
         throw new Error(data.error || `API error ${res.status}`);
       }
 
-      setAiExample(data.result as CardExample);
+      const result = data.result as CardExample;
+      setAiExample(result);
+      saveGeneratedExample(result);
     } catch (err: any) {
       setAiExampleError(err.message ?? "Could not generate an example for this card.");
     } finally {
       setAiExampleLoading(false);
     }
-  }, [currentCard, exampleLevel]);
+  }, [currentCard, exampleLevel, saveGeneratedExample]);
 
   const checkOwnSentence = useCallback(async () => {
     if (!currentCard || ownSentence.trim().length < 2) return;
@@ -760,6 +827,13 @@ export default function Review() {
                 </Button>
               </div>
 
+              {currentCard.generatedExamples && currentCard.generatedExamples.length > 0 && (
+                <SavedGeneratedExamples
+                  examples={currentCard.generatedExamples}
+                  onRemove={removeGeneratedExample}
+                />
+              )}
+
               {aiExampleError && (
                 <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
@@ -951,6 +1025,64 @@ export default function Review() {
       )}
 
       <p className="text-center text-xs text-muted-foreground">Space to reveal · 1–4 to rate</p>
+    </div>
+  );
+}
+
+function SavedGeneratedExamples({
+  examples,
+  onRemove,
+}: {
+  examples: GeneratedCardExample[];
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border bg-background p-4">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saved examples</p>
+        <p className="text-sm text-muted-foreground">Generated sentences stay here for this card until you remove them.</p>
+      </div>
+      <div className="space-y-2 border-t pt-3">
+        {[...examples].reverse().map((example) => (
+          <div key={example.id} className="rounded-md bg-muted/35 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <Badge variant="outline" className="mb-1 rounded-full text-[11px]">{example.level}</Badge>
+                <p className="text-sm font-medium leading-relaxed">„{example.sentence}"</p>
+                {example.translation && (
+                  <p className="text-xs leading-relaxed text-muted-foreground">"{example.translation}"</p>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => onRemove(example.id)}
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                aria-label="Remove saved example"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            {(example.wordNote || example.grammarTip) && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {example.wordNote && (
+                  <div className="rounded-md bg-background/70 p-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
+                    <p className="mt-1 text-xs leading-relaxed">{example.wordNote}</p>
+                  </div>
+                )}
+                {example.grammarTip && (
+                  <div className="rounded-md bg-background/70 p-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
+                    <p className="mt-1 text-xs leading-relaxed">{example.grammarTip}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
