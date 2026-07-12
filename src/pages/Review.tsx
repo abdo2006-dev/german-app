@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { AlertCircle, ArrowLeft, CheckCircle, ChevronDown, Lightbulb, Loader2, Save, Sparkles, StickyNote, Trash2, X, Zap, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, ChevronDown, Edit3, Lightbulb, Loader2, Save, Sparkles, StickyNote, Trash2, X, Zap, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -144,6 +144,7 @@ export default function Review() {
   const [wordAnswerLoading, setWordAnswerLoading] = useState(false);
   const [wordAnswerError, setWordAnswerError] = useState<string | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [notesEditing, setNotesEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
 
   const scope = useMemo(() => ({ deckIds: selectedDeckIds }), [selectedDeckIds]);
@@ -313,6 +314,7 @@ export default function Review() {
     setWordAnswerError(null);
     setWordAnswerLoading(false);
     setNotesOpen(false);
+    setNotesEditing(false);
     setNoteDraft(currentCard?.notes ?? "");
   }, [currentCardId]);
 
@@ -480,6 +482,7 @@ export default function Review() {
     }
 
     setNoteDraft(notes);
+    setNotesEditing(false);
     toast.success(notes.trim() ? "Card note saved" : "Card note cleared");
   }, [cards, currentCard, updateCard]);
 
@@ -650,6 +653,7 @@ export default function Review() {
 
   const stateLabel = isNew ? "New" : currentCard.state === "learning" ? "Learning" : currentCard.state === "relearning" ? "Relearning" : "Review";
   const stateCls = isNew ? "stat-badge-new" : (currentCard.state === "learning" || currentCard.state === "relearning") ? "stat-badge-learning" : "stat-badge-review";
+  const hasSavedNote = Boolean(currentCard.notes?.trim());
 
   return (
     <div className="page-transition max-w-2xl mx-auto space-y-5">
@@ -672,6 +676,12 @@ export default function Review() {
       {/* Card state badge */}
       <div className="flex justify-center">
         <Badge variant="outline" className={cn("text-xs font-medium", stateCls)}>{stateLabel}</Badge>
+        {hasSavedNote && (
+          <Badge className="ml-2 border-amber-300 bg-amber-100 text-amber-900 shadow-[0_0_18px_rgba(245,158,11,0.35)] hover:bg-amber-100">
+            <StickyNote className="mr-1 h-3 w-3" />
+            Notes available
+          </Badge>
+        )}
         {currentCard.lapses > 0 && (
           <Badge variant="outline" className="ml-2 text-xs text-amber-600 border-amber-300">
             {currentCard.lapses} lapse{currentCard.lapses > 1 ? "s" : ""}
@@ -680,7 +690,16 @@ export default function Review() {
       </div>
 
       {/* Flashcard */}
-      <Card className="min-h-[280px] flex flex-col shadow-sm">
+      <Card className={cn(
+        "relative min-h-[280px] flex flex-col shadow-sm",
+        hasSavedNote && "border-amber-300/70 shadow-[0_0_0_1px_rgba(245,158,11,0.2),0_18px_50px_rgba(245,158,11,0.14)]"
+      )}>
+        {hasSavedNote && (
+          <div className="absolute right-4 top-4 rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 shadow-[0_0_16px_rgba(245,158,11,0.35)]">
+            <StickyNote className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+            Notes available
+          </div>
+        )}
         <CardContent className="flex-1 flex flex-col justify-center items-center py-10 text-center">
           <div className="mb-8">
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
@@ -714,7 +733,12 @@ export default function Review() {
         </CardContent>
       </Card>
 
-      <Card className="border-muted bg-muted/10 shadow-sm">
+      <Card className={cn(
+        "shadow-sm transition-shadow",
+        hasSavedNote
+          ? "border-amber-300/70 bg-amber-50/45 shadow-[0_0_24px_rgba(245,158,11,0.18)]"
+          : "border-muted bg-muted/10"
+      )}>
         <CardContent className="p-4">
           <button
             type="button"
@@ -722,47 +746,80 @@ export default function Review() {
             className="flex w-full items-center justify-between gap-3 text-left"
           >
             <div className="flex items-center gap-2">
-              <StickyNote className="h-4 w-4 text-primary" />
+              <StickyNote className={cn("h-4 w-4", hasSavedNote ? "text-amber-700" : "text-primary")} />
               <div>
-                <p className="text-sm font-semibold">Card notes</p>
-                <p className="text-xs text-muted-foreground">
-                  {currentCard.notes?.trim() ? "Saved note available" : "No note saved yet"}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold">Card notes</p>
+                  {hasSavedNote && (
+                    <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900 shadow-[0_0_14px_rgba(245,158,11,0.28)]">
+                      Notes available
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">{hasSavedNote ? "Open to review your saved explanation." : "No note saved yet"}</p>
               </div>
             </div>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", notesOpen && "rotate-180")} />
           </button>
 
           {notesOpen && (
-            <div className="mt-4 space-y-3 border-t pt-4">
-              <Textarea
-                value={noteDraft}
-                onChange={(event) => setNoteDraft(event.target.value)}
-                placeholder={`Save a note for "${currentCard.germanWord}"...`}
-                className="min-h-[120px] resize-y bg-background text-sm leading-relaxed"
-              />
+            <div className="mt-4 space-y-4 border-t pt-4">
+              {hasSavedNote && !notesEditing ? (
+                <ReadableCardNote note={currentCard.notes} />
+              ) : (
+                <Textarea
+                  value={noteDraft}
+                  onChange={(event) => setNoteDraft(event.target.value)}
+                  placeholder={`Save a note for "${currentCard.germanWord}"...`}
+                  className="min-h-[220px] resize-y bg-background text-base leading-7"
+                />
+              )}
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                {currentCard.notes?.trim() && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => saveCardNotes("")}
-                    className="sm:w-auto"
-                  >
-                    Clear Note
+                {hasSavedNote && !notesEditing && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNotesEditing(true)} className="gap-2 sm:w-auto">
+                    <Edit3 className="h-4 w-4" />
+                    Edit Note
                   </Button>
                 )}
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => saveCardNotes(noteDraft)}
-                  disabled={noteDraft === (currentCard.notes ?? "")}
-                  className="gap-2 sm:w-auto"
-                >
-                  <Save className="h-4 w-4" />
-                  Save Note
-                </Button>
+                {(notesEditing || !hasSavedNote) && (
+                  <>
+                    {hasSavedNote && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setNoteDraft(currentCard.notes ?? "");
+                          setNotesEditing(false);
+                        }}
+                        className="sm:w-auto"
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                    {hasSavedNote && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => saveCardNotes("")}
+                        className="sm:w-auto"
+                      >
+                        Clear Note
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => saveCardNotes(noteDraft)}
+                      disabled={noteDraft === (currentCard.notes ?? "")}
+                      className="gap-2 sm:w-auto"
+                    >
+                      <Save className="h-4 w-4" />
+                      Save Note
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -1025,6 +1082,63 @@ export default function Review() {
       )}
 
       <p className="text-center text-xs text-muted-foreground">Space to reveal · 1–4 to rate</p>
+    </div>
+  );
+}
+
+function ReadableCardNote({ note }: { note: string }) {
+  const sections = note
+    .trim()
+    .split(/\n\s*(?:---+)?\s*\n|^---+$/gm)
+    .map(section => section.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="space-y-3">
+      {sections.map((section, sectionIndex) => {
+        const lines = section.split(/\n+/).map(line => line.trim()).filter(Boolean);
+        return (
+          <div key={`${section.slice(0, 24)}-${sectionIndex}`} className="rounded-lg border bg-background p-4 shadow-sm">
+            <div className="space-y-3">
+              {lines.map((line, lineIndex) => {
+                const bullet = line.match(/^[-•]\s*(.+)$/);
+                const label = line.match(/^([^:]{2,32}):\s*(.+)$/);
+
+                if (bullet) {
+                  return (
+                    <div key={`${line}-${lineIndex}`} className="flex gap-2 rounded-md bg-muted/35 px-3 py-2 text-sm leading-6">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                      <p className="whitespace-pre-wrap">{bullet[1]}</p>
+                    </div>
+                  );
+                }
+
+                if (label) {
+                  return (
+                    <div key={`${line}-${lineIndex}`} className="rounded-md bg-muted/30 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label[1]}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{label[2]}</p>
+                    </div>
+                  );
+                }
+
+                const isTitle = lineIndex === 0 && lines.length > 1;
+                return (
+                  <p
+                    key={`${line}-${lineIndex}`}
+                    className={cn(
+                      "whitespace-pre-wrap leading-7",
+                      isTitle ? "text-base font-semibold text-foreground" : "text-sm text-foreground"
+                    )}
+                  >
+                    {line}
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
