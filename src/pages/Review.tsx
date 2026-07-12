@@ -146,6 +146,7 @@ export default function Review() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesEditing, setNotesEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
+  const [savedExamplesOpen, setSavedExamplesOpen] = useState(false);
 
   const scope = useMemo(() => ({ deckIds: selectedDeckIds }), [selectedDeckIds]);
 
@@ -316,6 +317,7 @@ export default function Review() {
     setNotesOpen(false);
     setNotesEditing(false);
     setNoteDraft(currentCard?.notes ?? "");
+    setSavedExamplesOpen(false);
   }, [currentCardId]);
 
   const saveGeneratedExample = useCallback((example: CardExample) => {
@@ -887,6 +889,8 @@ export default function Review() {
               {currentCard.generatedExamples && currentCard.generatedExamples.length > 0 && (
                 <SavedGeneratedExamples
                   examples={currentCard.generatedExamples}
+                  open={savedExamplesOpen}
+                  onOpenChange={setSavedExamplesOpen}
                   onRemove={removeGeneratedExample}
                 />
               )}
@@ -1094,47 +1098,56 @@ function ReadableCardNote({ note }: { note: string }) {
     .filter(Boolean);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {sections.map((section, sectionIndex) => {
         const lines = section.split(/\n+/).map(line => line.trim()).filter(Boolean);
+        const grouped = lines.reduce<Array<{ label?: string; body: string[]; title?: boolean }>>((acc, line, lineIndex) => {
+          const bullet = line.match(/^[-•]\s*(.+)$/);
+          const label = line.match(/^([^:]{2,32}):\s*(.+)$/);
+          if (bullet) {
+            const last = acc[acc.length - 1];
+            if (last?.label === "Details") last.body.push(bullet[1]);
+            else acc.push({ label: "Details", body: [bullet[1]] });
+            return acc;
+          }
+          if (label) {
+            acc.push({ label: label[1], body: [label[2]] });
+            return acc;
+          }
+          acc.push({ body: [line], title: lineIndex === 0 && lines.length > 1 });
+          return acc;
+        }, []);
+
         return (
-          <div key={`${section.slice(0, 24)}-${sectionIndex}`} className="rounded-lg border bg-background p-4 shadow-sm">
-            <div className="space-y-3">
-              {lines.map((line, lineIndex) => {
-                const bullet = line.match(/^[-•]\s*(.+)$/);
-                const label = line.match(/^([^:]{2,32}):\s*(.+)$/);
-
-                if (bullet) {
-                  return (
-                    <div key={`${line}-${lineIndex}`} className="flex gap-2 rounded-md bg-muted/35 px-3 py-2 text-sm leading-6">
-                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                      <p className="whitespace-pre-wrap">{bullet[1]}</p>
-                    </div>
-                  );
-                }
-
-                if (label) {
-                  return (
-                    <div key={`${line}-${lineIndex}`} className="rounded-md bg-muted/30 px-3 py-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label[1]}</p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{label[2]}</p>
-                    </div>
-                  );
-                }
-
-                const isTitle = lineIndex === 0 && lines.length > 1;
-                return (
-                  <p
-                    key={`${line}-${lineIndex}`}
-                    className={cn(
-                      "whitespace-pre-wrap leading-7",
-                      isTitle ? "text-base font-semibold text-foreground" : "text-sm text-foreground"
-                    )}
-                  >
-                    {line}
-                  </p>
-                );
-              })}
+          <div key={`${section.slice(0, 24)}-${sectionIndex}`} className="rounded-md border bg-background p-3 shadow-sm">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {grouped.map((item, itemIndex) => (
+                <div
+                  key={`${item.label ?? item.body[0]}-${itemIndex}`}
+                  className={cn(
+                    "rounded-md bg-muted/25 px-3 py-2",
+                    item.title && "bg-transparent px-0 py-0 sm:col-span-2"
+                  )}
+                >
+                  {item.label && (
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                  )}
+                  {item.label === "Details" ? (
+                    <ul className="mt-1 space-y-1">
+                      {item.body.map((line) => (
+                        <li key={line} className="flex gap-2 text-sm leading-6">
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={cn("whitespace-pre-wrap leading-6", item.title ? "text-base font-semibold" : "mt-1 text-sm")}>
+                      {item.body.join(" ")}
+                    </p>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         );
@@ -1145,58 +1158,79 @@ function ReadableCardNote({ note }: { note: string }) {
 
 function SavedGeneratedExamples({
   examples,
+  open,
+  onOpenChange,
   onRemove,
 }: {
   examples: GeneratedCardExample[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onRemove: (id: string) => void;
 }) {
+  const latest = examples[examples.length - 1];
+
   return (
-    <div className="space-y-2 rounded-md border bg-background p-4">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saved examples</p>
-        <p className="text-sm text-muted-foreground">Generated sentences stay here for this card until you remove them.</p>
-      </div>
-      <div className="space-y-2 border-t pt-3">
-        {[...examples].reverse().map((example) => (
-          <div key={example.id} className="rounded-md bg-muted/35 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 space-y-1">
-                <Badge variant="outline" className="mb-1 rounded-full text-[11px]">{example.level}</Badge>
-                <p className="text-sm font-medium leading-relaxed">„{example.sentence}"</p>
-                {example.translation && (
-                  <p className="text-xs leading-relaxed text-muted-foreground">"{example.translation}"</p>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => onRemove(example.id)}
-                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                aria-label="Remove saved example"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-            {(example.wordNote || example.grammarTip) && (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {example.wordNote && (
-                  <div className="rounded-md bg-background/70 p-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
-                    <p className="mt-1 text-xs leading-relaxed">{example.wordNote}</p>
-                  </div>
-                )}
-                {example.grammarTip && (
-                  <div className="rounded-md bg-background/70 p-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
-                    <p className="mt-1 text-xs leading-relaxed">{example.grammarTip}</p>
-                  </div>
-                )}
-              </div>
-            )}
+    <div className="rounded-md border bg-background">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className="flex w-full items-center justify-between gap-3 p-3 text-left"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saved examples</p>
+            <Badge variant="secondary" className="rounded-full text-[11px]">{examples.length}</Badge>
           </div>
-        ))}
-      </div>
+          {latest && (
+            <p className="mt-1 truncate text-sm text-muted-foreground">Latest: „{latest.sentence}"</p>
+          )}
+        </div>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="space-y-2 border-t p-3">
+          {[...examples].reverse().map((example) => (
+            <div key={example.id} className="rounded-md bg-muted/30 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <Badge variant="outline" className="mb-1 rounded-full text-[11px]">{example.level}</Badge>
+                  <p className="text-sm font-medium leading-relaxed">„{example.sentence}"</p>
+                  {example.translation && (
+                    <p className="text-xs leading-relaxed text-muted-foreground">"{example.translation}"</p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onRemove(example.id)}
+                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                  aria-label="Remove saved example"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              {(example.wordNote || example.grammarTip) && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {example.wordNote && (
+                    <div className="rounded-md bg-background/70 p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
+                      <p className="mt-1 text-xs leading-relaxed">{example.wordNote}</p>
+                    </div>
+                  )}
+                  {example.grammarTip && (
+                    <div className="rounded-md bg-background/70 p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
+                      <p className="mt-1 text-xs leading-relaxed">{example.grammarTip}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
