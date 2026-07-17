@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { useFlashcardStore } from "@/store/flashcardStore";
 import { getNextIntervals } from "@/lib/srs";
 import { buildDueQueue, getNextLearningDueAt, getSiblingKey, stableShuffle } from "@/lib/reviewQueue";
+import { getCardPriorityRank, parsePriorityWords } from "@/lib/wordMatch";
 import type { Card as CardType, GeneratedCardExample, Rating } from "@/types/flashcard";
 import { toast } from "sonner";
 
@@ -47,6 +48,7 @@ type CardQuestionAnswer = {
 type PersistedReviewSession = {
   version: 1;
   deckIdsParam: string;
+  priorityWordsParam?: string;
   seed: number;
   queue: QueueEntry[];
   currentCardId: string | null;
@@ -66,16 +68,21 @@ const ratingButtonClasses: Record<Rating, string> = {
 };
 const REVIEW_SESSION_VERSION = 1;
 
-function getReviewSessionKey(deckIdsParam: string) {
-  return `wortwise-review-session:${deckIdsParam}`;
+function getReviewSessionKey(deckIdsParam: string, priorityWordsParam: string) {
+  if (!priorityWordsParam) return `wortwise-review-session:${deckIdsParam}`;
+  return `wortwise-review-session:${deckIdsParam}:${priorityWordsParam}`;
 }
 
-function readReviewSession(deckIdsParam: string): PersistedReviewSession | null {
+function readReviewSession(deckIdsParam: string, priorityWordsParam: string): PersistedReviewSession | null {
   try {
-    const raw = window.localStorage.getItem(getReviewSessionKey(deckIdsParam));
+    const raw = window.localStorage.getItem(getReviewSessionKey(deckIdsParam, priorityWordsParam));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedReviewSession;
-    if (parsed.version !== REVIEW_SESSION_VERSION || parsed.deckIdsParam !== deckIdsParam) return null;
+    if (
+      parsed.version !== REVIEW_SESSION_VERSION ||
+      parsed.deckIdsParam !== deckIdsParam ||
+      (parsed.priorityWordsParam ?? "") !== priorityWordsParam
+    ) return null;
     return parsed;
   } catch {
     return null;
@@ -84,15 +91,15 @@ function readReviewSession(deckIdsParam: string): PersistedReviewSession | null 
 
 function writeReviewSession(session: PersistedReviewSession) {
   try {
-    window.localStorage.setItem(getReviewSessionKey(session.deckIdsParam), JSON.stringify(session));
+    window.localStorage.setItem(getReviewSessionKey(session.deckIdsParam, session.priorityWordsParam ?? ""), JSON.stringify(session));
   } catch {
     // Storage can be unavailable in private browsing; review still works without resume.
   }
 }
 
-function clearReviewSession(deckIdsParam: string) {
+function clearReviewSession(deckIdsParam: string, priorityWordsParam: string) {
   try {
-    window.localStorage.removeItem(getReviewSessionKey(deckIdsParam));
+    window.localStorage.removeItem(getReviewSessionKey(deckIdsParam, priorityWordsParam));
   } catch {
     // Ignore storage failures.
   }
@@ -116,8 +123,10 @@ export default function Review() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const deckIdsParam = searchParams.get("deckIds");
+  const priorityWordsParam = searchParams.get("priorityWords") ?? "";
   const freshSession = searchParams.get("fresh") === "1";
   const selectedDeckIds = useMemo(() => (deckIdsParam ? deckIdsParam.split(",") : []), [deckIdsParam]);
+  const priorityTerms = useMemo(() => parsePriorityWords(priorityWordsParam), [priorityWordsParam]);
 
   const { decks, cards, reviewCard, buryCard, markNewCardIntroduced, updateCard } = useFlashcardStore();
 
@@ -166,17 +175,43 @@ export default function Review() {
   }, [currentCard, currentDeck]);
 
   /**
-   * Build the full session queue: due cards first, then new cards.
-   * New cards are interleaved after every 5 due cards to avoid front-loading.
+   * Build the full session queue: requested priority words first, then due cards
+   * and new cards interleaved after every 5 due cards to avoid front-loading.
    */
   const buildSessionQueue = useCallback((now: Date): QueueEntry[] => {
     const state = useFlashcardStore.getState();
+    const prioritySiblingKeys = new Set<string>();
+    const priorityItems: QueueEntry[] = [];
+
+    if (priorityTerms.length > 0) {
+      const selected = new Set(selectedDeckIds);
+      const rankedCards = state.cards
+        .filter((c) =>
+          selected.has(c.deckId) &&
+          !c.suspended &&
+          !c.buried &&
+          !buriedSiblingKeys.current.has(getSiblingKey(c))
+        )
+        .map((card) => ({ card, rank: getCardPriorityRank(card, priorityTerms) }))
+        .filter((item): item is { card: CardType; rank: number } => item.rank !== null)
+        .sort((a, b) => a.rank - b.rank || a.card.germanWord.localeCompare(b.card.germanWord));
+
+      for (const { card } of rankedCards) {
+        const siblingKey = getSiblingKey(card);
+        if (prioritySiblingKeys.has(siblingKey)) continue;
+        prioritySiblingKeys.add(siblingKey);
+        priorityItems.push({ cardId: card.id, isNew: card.state === "new" });
+      }
+    }
+
     const dueItems = buildDueQueue(state.cards, scope, now, seed)
       .map(i => state.cards.find(c => c.id === i.cardId))
       .filter((c): c is CardType => Boolean(c))
       .filter((c) => {
+        const siblingKey = getSiblingKey(c);
+        if (prioritySiblingKeys.has(siblingKey)) return false;
         if (c.state === "learning" || c.state === "relearning") return true;
-        return !buriedSiblingKeys.current.has(getSiblingKey(c));
+        return !buriedSiblingKeys.current.has(siblingKey) && !prioritySiblingKeys.has(siblingKey);
       })
       .map(c => ({ cardId: c.id, isNew: false }));
 
@@ -184,7 +219,10 @@ export default function Review() {
     const newItems: QueueEntry[] = [];
     for (const deckId of selectedDeckIds) {
       const newCards = stableShuffle(state.getNewCardsForSession(deckId), seed + deckId.length)
-        .filter((c) => !buriedSiblingKeys.current.has(getSiblingKey(c)));
+        .filter((c) => {
+          const siblingKey = getSiblingKey(c);
+          return !buriedSiblingKeys.current.has(siblingKey) && !prioritySiblingKeys.has(siblingKey);
+        });
       for (const c of newCards) newItems.push({ cardId: c.id, isNew: true });
     }
 
@@ -195,8 +233,8 @@ export default function Review() {
       for (let i = 0; i < 5 && di < dueItems.length; i++, di++) result.push(dueItems[di]);
       if (ni < newItems.length) result.push(newItems[ni++]);
     }
-    return result;
-  }, [scope, seed, selectedDeckIds]);
+    return [...priorityItems, ...result];
+  }, [priorityTerms, scope, seed, selectedDeckIds]);
 
   const pickNext = useCallback((now: Date) => {
     const q = buildSessionQueue(now);
@@ -229,13 +267,15 @@ export default function Review() {
     if (!deckIdsParam) { navigate("/practice", { replace: true }); return; }
 
     if (freshSession) {
-      clearReviewSession(deckIdsParam);
-      navigate(`/review?deckIds=${encodeURIComponent(deckIdsParam)}`, { replace: true });
+      clearReviewSession(deckIdsParam, priorityWordsParam);
+      const params = new URLSearchParams({ deckIds: deckIdsParam });
+      if (priorityWordsParam) params.set("priorityWords", priorityWordsParam);
+      navigate(`/review?${params.toString()}`, { replace: true });
       return;
     }
 
     const state = useFlashcardStore.getState();
-    const restored = readReviewSession(deckIdsParam);
+    const restored = readReviewSession(deckIdsParam, priorityWordsParam);
     if (restored) {
       const selected = new Set(selectedDeckIds);
       const isValidCard = (cardId: string | null) => {
@@ -269,7 +309,7 @@ export default function Review() {
     buriedSiblingKeys.current = new Set();
     startTime.current = Date.now();
     pickNext(new Date());
-  }, [deckIdsParam, freshSession]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deckIdsParam, freshSession, priorityWordsParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!deckIdsParam || freshSession) return;
@@ -279,6 +319,7 @@ export default function Review() {
     writeReviewSession({
       version: REVIEW_SESSION_VERSION,
       deckIdsParam,
+      priorityWordsParam,
       seed,
       queue,
       currentCardId,
@@ -289,7 +330,7 @@ export default function Review() {
       buriedSiblingKeys: [...buriedSiblingKeys.current],
       updatedAt: new Date().toISOString(),
     });
-  }, [deckIdsParam, freshSession, seed, queue, currentCardId, revealed, sessionStats, isComplete, waitingUntil]);
+  }, [deckIdsParam, priorityWordsParam, freshSession, seed, queue, currentCardId, revealed, sessionStats, isComplete, waitingUntil]);
 
   // Timer for waiting state
   useEffect(() => {
@@ -666,7 +707,14 @@ export default function Review() {
         </Button>
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">{currentDeck.name}</p>
-          <p className="text-xs text-muted-foreground">{sessionStats.reviewed} reviewed · {remaining} remaining</p>
+          <div className="mt-0.5 flex flex-wrap items-center justify-center gap-1.5 text-xs text-muted-foreground">
+            <span>{sessionStats.reviewed} reviewed · {remaining} remaining</span>
+            {priorityTerms.length > 0 && (
+              <Badge variant="secondary" className="h-5 rounded-full px-2 text-[11px] font-medium">
+                Priority first
+              </Badge>
+            )}
+          </div>
         </div>
         <Button variant="ghost" size="sm" onClick={handleBury}>
           <X className="h-4 w-4 mr-1" />Skip

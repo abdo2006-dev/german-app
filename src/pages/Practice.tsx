@@ -5,14 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Folder as FolderIcon, ArrowRight, Zap, BookOpen, Sparkles } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Folder as FolderIcon, ArrowRight, Zap, BookOpen, Sparkles, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getSiblingKey } from "@/lib/reviewQueue";
+import { getCardPriorityRank, parsePriorityWords } from "@/lib/wordMatch";
 
 type Counts = { new: number; learning: number; due: number; total: number };
 
 export default function Practice() {
   const navigate = useNavigate();
-  const { folders, decks, getDeckStats, getNewCardsForSession } = useFlashcardStore();
+  const { folders, decks, cards, getDeckStats, getNewCardsForSession } = useFlashcardStore();
 
   const decksByFolder = useMemo(() => {
     const m = new Map<string, typeof decks>();
@@ -27,6 +30,8 @@ export default function Practice() {
     // Auto-select all decks that have due or new cards
     return new Set();
   });
+  const [priorityWords, setPriorityWords] = useState("");
+  const priorityTerms = useMemo(() => parsePriorityWords(priorityWords), [priorityWords]);
 
   const deckCounts = useMemo(() => {
     const m = new Map<string, Counts>();
@@ -84,11 +89,23 @@ export default function Practice() {
     return { due, learning, newCards, total: due + learning + newCards };
   }, [selectedDeckIds, deckCounts]);
 
-  const canStart = selectedDeckIds.size > 0 && selectedSummary.total > 0;
+  const priorityMatchCount = useMemo(() => {
+    if (priorityTerms.length === 0 || selectedDeckIds.size === 0) return 0;
+    const seen = new Set<string>();
+    for (const card of cards) {
+      if (!selectedDeckIds.has(card.deckId) || card.suspended) continue;
+      if (getCardPriorityRank(card, priorityTerms) === null) continue;
+      seen.add(getSiblingKey(card));
+    }
+    return seen.size;
+  }, [cards, priorityTerms, selectedDeckIds]);
+  const canStart = selectedDeckIds.size > 0 && (selectedSummary.total > 0 || priorityMatchCount > 0);
 
   const start = () => {
     const ids = [...selectedDeckIds].join(",");
-    navigate(`/review?deckIds=${encodeURIComponent(ids)}&fresh=1`);
+    const params = new URLSearchParams({ deckIds: ids, fresh: "1" });
+    if (priorityWords.trim()) params.set("priorityWords", priorityWords.trim());
+    navigate(`/review?${params.toString()}`);
   };
 
   const allDecks = [...(decksByFolder.entries())];
@@ -126,6 +143,31 @@ export default function Practice() {
           <Button variant="ghost" size="sm" onClick={() => setSelectedDeckIds(new Set())}>Clear</Button>
         )}
       </div>
+
+      <Card className="border-primary/15 bg-primary/[0.025]">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            <Target className="h-4 w-4 text-primary" />
+            Study these first
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Textarea
+            value={priorityWords}
+            onChange={(event) => setPriorityWords(event.target.value)}
+            placeholder={"Paste words from a column, commas, or lines:\nder Stuhl, brauchen\nbenötigen\tverwenden"}
+            className="min-h-[96px] resize-y bg-background leading-relaxed"
+          />
+          <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <p>Matches ignore case and leading articles like der, die, das, den, ein, or kein.</p>
+            {priorityTerms.length > 0 && (
+              <Badge variant={priorityMatchCount > 0 ? "default" : "outline"} className="w-fit shrink-0">
+                {priorityMatchCount} match{priorityMatchCount === 1 ? "" : "es"} in selected decks
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">
@@ -229,6 +271,7 @@ export default function Practice() {
                 <span className="text-muted-foreground">Selected decks are all up to date</span>
               ) : (
                 <div className="flex gap-3 flex-wrap">
+                  {priorityMatchCount > 0 && <span className="text-primary font-medium">{priorityMatchCount} priority first</span>}
                   {selectedSummary.due > 0 && <span className="text-srs-again font-medium">{selectedSummary.due} due</span>}
                   {selectedSummary.learning > 0 && <span className="font-medium">{selectedSummary.learning} learning</span>}
                   {selectedSummary.newCards > 0 && <span className="text-srs-new font-medium">{selectedSummary.newCards} new</span>}
