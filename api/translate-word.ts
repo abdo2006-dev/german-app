@@ -162,22 +162,21 @@ Return JSON with this exact shape:
   "usage": "what this word/phrase is mostly used for, including register or common context",
   "exampleGerman": "one natural German example sentence using this word/phrase",
   "exampleEnglish": "English translation of exampleGerman",
-  "memoryHook": "one short sticky memory cue that links the term, meaning, and context without fake etymology",
-  "memoryImage": "one vivid mental image or micro-scene that helps remember the word",
-  "recallPrompt": "one quick self-test prompt, like 'When you see X in this sentence, what does it mean?'",
-  "note": "brief explanation of why this meaning fits the given sentence"
+  "memoryHook": "",
+  "memoryImage": "",
+  "recallPrompt": "",
+  "note": ""
 }
 
 Rules:
 - If selection mode is PHRASE, contextualMeaning must translate the whole selected span, not just one word, not just one clause, and not a summary.
 - If selection mode is PHRASE, keep the same meaning boundaries as the German text. For example, if the German contains two clauses joined by "und", the English translation must include both clauses.
-- If selection mode is PHRASE, set grammar.kind to "phrase" and leave usage, exampleGerman, exampleEnglish, memoryHook, memoryImage, recallPrompt, and note as empty strings unless the phrase itself is a fixed idiom that needs one short note.
+- Always leave memoryHook, memoryImage, recallPrompt, and note as empty strings.
+- If selection mode is PHRASE, set grammar.kind to "phrase" and leave usage, exampleGerman, and exampleEnglish as empty strings unless the phrase itself is a fixed idiom.
 - If the selected word is a conjugated verb, grammar.infinitive must contain the infinitive, e.g. "verhält" -> "sich verhalten".
 - If the selected word is a noun, grammar.article must be der/die/das and grammar.lemma must be the singular noun without article, even if the selected form is plural, dative, genitive, or accusative. Example: "Aufenthalt" -> article "der", lemma "Aufenthalt".
 - If the selected word is an adjective, grammar.lemma must be the undeclined dictionary form. Examples: "guten" -> "gut", "schönen" -> "schön", "deutschen" -> "deutsch".
-- If the word is inflected or conjugated, explain the visible form briefly in note.
-- Make memoryHook and memoryImage emotionally or visually memorable, but do not claim false cognates or invented etymology.
-- The recallPrompt should force active recall in under 10 seconds.
+- If the word is inflected or conjugated, reflect that only in grammar fields, not in note.
 - Keep explanations practical for a learner who wants to save this as a flashcard.
 - Do not invent context outside the passage.`;
 
