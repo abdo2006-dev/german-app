@@ -24,13 +24,16 @@ export interface DeckSettings {
 export const DEFAULT_DECK_SETTINGS: DeckSettings = {
   newCardsPerDay: 20,
   templateMode: 'both',
-  learningSteps: [1, 10],
+  // Anki's own default (1m, 10m) only shows a new word twice before it jumps to
+  // day-based spacing. Three steps (1m, 10m, 1h) give it a third same-day pass
+  // first — better for vocab you've only just met.
+  learningSteps: [1, 10, 60],
   graduatingInterval: 1,
   easyInterval: 4,
   easyBonus: 1.3,
   intervalModifier: 1.0,
   maxInterval: 365,
-  lapseSteps: [10],
+  lapseSteps: [10, 60],
   lapseNewInterval: 0.0,
   leechThreshold: 8,
 };

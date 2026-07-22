@@ -495,11 +495,24 @@ export const useFlashcardStore = create<FlashcardState>()(
         if (!state) return;
         state.folders = deserializeDates(state.folders, ['createdAt', 'updatedAt']);
         state.decks = deserializeDates(state.decks, ['createdAt', 'updatedAt']);
-        state.decks = state.decks.map((d: any) => ({
-          ...d,
-          folderId: d.folderId ?? null,
-          settings: { ...DEFAULT_DECK_SETTINGS, ...(d.settings ?? {}) },
-        }));
+        state.decks = state.decks.map((d: any) => {
+          const settings = { ...DEFAULT_DECK_SETTINGS, ...(d.settings ?? {}) };
+          // Decks created before learning/lapse steps were configurable still carry
+          // the old hardcoded defaults (1m/10m learning, 10m lapse). Bump those up to
+          // the new defaults so existing decks get the extra repetition too, without
+          // touching steps anyone has deliberately customized to something else.
+          if (JSON.stringify(settings.learningSteps) === JSON.stringify([1, 10])) {
+            settings.learningSteps = DEFAULT_DECK_SETTINGS.learningSteps;
+          }
+          if (JSON.stringify(settings.lapseSteps) === JSON.stringify([10])) {
+            settings.lapseSteps = DEFAULT_DECK_SETTINGS.lapseSteps;
+          }
+          return {
+            ...d,
+            folderId: d.folderId ?? null,
+            settings,
+          };
+        });
         state.cards = deserializeDates(state.cards, ['createdAt', 'updatedAt', 'due']);
         // Migrate old cards missing new fields
         state.cards = state.cards.map((c: any) => ({

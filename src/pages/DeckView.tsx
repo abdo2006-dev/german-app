@@ -44,6 +44,18 @@ import { PronounceButton } from '@/components/PronounceButton';
 import { toast } from 'sonner';
 import type { Card as CardType, DeckSettings } from '@/types/flashcard';
 
+function parseStepsInput(value: string, fallback: number[]): number[] {
+  const parsed = value
+    .split(/[\s,]+/)
+    .map((chunk) => parseFloat(chunk))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+function formatStepsInput(steps: number[]): string {
+  return steps.join(' ');
+}
+
 export default function DeckView() {
   const { deckId } = useParams<{ deckId: string }>();
   const navigate = useNavigate();
@@ -79,6 +91,10 @@ export default function DeckView() {
   const [newCardsPerDay, setNewCardsPerDay] = useState(20);
   const [templateMode, setTemplateMode] = useState<DeckSettings['templateMode']>('both');
   const [settingsFolderId, setSettingsFolderId] = useState<string | null>(null);
+  const [learningStepsText, setLearningStepsText] = useState('');
+  const [lapseStepsText, setLapseStepsText] = useState('');
+  const [graduatingInterval, setGraduatingInterval] = useState(1);
+  const [easyInterval, setEasyInterval] = useState(4);
 
   if (!deck || !stats) {
     return (
@@ -134,6 +150,10 @@ export default function DeckView() {
     setNewCardsPerDay(deck.settings.newCardsPerDay);
     setTemplateMode(deck.settings.templateMode);
     setSettingsFolderId(deck.folderId);
+    setLearningStepsText(formatStepsInput(deck.settings.learningSteps));
+    setLapseStepsText(formatStepsInput(deck.settings.lapseSteps));
+    setGraduatingInterval(deck.settings.graduatingInterval);
+    setEasyInterval(deck.settings.easyInterval);
     setSettingsOpen(true);
   };
 
@@ -144,6 +164,10 @@ export default function DeckView() {
         ...deck.settings,
         newCardsPerDay: Math.max(0, Math.floor(newCardsPerDay || 0)),
         templateMode,
+        learningSteps: parseStepsInput(learningStepsText, deck.settings.learningSteps),
+        lapseSteps: parseStepsInput(lapseStepsText, deck.settings.lapseSteps),
+        graduatingInterval: Math.max(1, Math.floor(graduatingInterval || 1)),
+        easyInterval: Math.max(1, Math.floor(easyInterval || 1)),
       }
     });
     toast.success('Settings saved');
@@ -458,6 +482,48 @@ export default function DeckView() {
               <p className="text-sm text-muted-foreground">
                 This affects newly imported cards only.
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Learning Steps (minutes)</Label>
+              <Input
+                value={learningStepsText}
+                onChange={(e) => setLearningStepsText(e.target.value)}
+                placeholder="1 10 60"
+              />
+              <p className="text-sm text-muted-foreground">
+                How many times a new word repeats today, and how far apart, before it graduates to daily review. Space-separated minutes — more steps means more repetition.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Relearning Steps (minutes)</Label>
+              <Input
+                value={lapseStepsText}
+                onChange={(e) => setLapseStepsText(e.target.value)}
+                placeholder="10 60"
+              />
+              <p className="text-sm text-muted-foreground">
+                Same idea, but for a card you forgot (pressed Again) during daily review.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Graduating Interval (days)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={graduatingInterval}
+                  onChange={(e) => setGraduatingInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Easy Interval (days)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={easyInterval}
+                  onChange={(e) => setEasyInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
