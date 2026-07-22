@@ -52,8 +52,6 @@ export interface GeneratedCardExample {
   level: 'A2' | 'B1';
   sentence: string;
   translation: string;
-  wordNote: string;
-  grammarTip: string;
   vocabulary: { word: string; translation: string; note?: string }[];
   createdAt: string;
 }

@@ -22,8 +22,6 @@ type AiPracticeMode = "generate" | "check" | "ask";
 type CardExample = {
   sentence?: string;
   translation?: string;
-  wordNote?: string;
-  grammarTip?: string;
   vocabulary?: { word: string; translation: string; note?: string }[];
 };
 type CardSentenceCheck = {
@@ -113,8 +111,6 @@ function makeSavedExample(example: CardExample, level: ExampleLevel): GeneratedC
     level,
     sentence: example.sentence.trim(),
     translation: example.translation?.trim() ?? "",
-    wordNote: example.wordNote?.trim() ?? "",
-    grammarTip: example.grammarTip?.trim() ?? "",
     vocabulary: example.vocabulary ?? [],
     createdAt: new Date().toISOString(),
   };
@@ -978,22 +974,6 @@ export default function Review() {
                       <p className="mt-1 text-sm leading-relaxed text-muted-foreground">"{aiExample.translation}"</p>
                     </div>
                   )}
-                  {(aiExample.wordNote || aiExample.grammarTip) && (
-                    <div className="grid gap-2 border-t pt-3 sm:grid-cols-2">
-                      {aiExample.wordNote && (
-                        <div className="rounded-md bg-muted/45 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
-                          <p className="mt-1 text-sm leading-relaxed">{aiExample.wordNote}</p>
-                        </div>
-                      )}
-                      {aiExample.grammarTip && (
-                        <div className="rounded-md bg-muted/45 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
-                          <p className="mt-1 text-sm leading-relaxed">{aiExample.grammarTip}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
                   {aiExample.vocabulary && aiExample.vocabulary.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 border-t pt-3">
                       {aiExample.vocabulary.slice(0, 4).map((item, index) => (
@@ -1334,22 +1314,6 @@ function SavedGeneratedExamples({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-              {(example.wordNote || example.grammarTip) && (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {example.wordNote && (
-                    <div className="rounded-md bg-background/70 p-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
-                      <p className="mt-1 text-xs leading-relaxed">{example.wordNote}</p>
-                    </div>
-                  )}
-                  {example.grammarTip && (
-                    <div className="rounded-md bg-background/70 p-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
-                      <p className="mt-1 text-xs leading-relaxed">{example.grammarTip}</p>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>

@@ -78,14 +78,12 @@ Return JSON with this exact shape:
   "mode": "card-example",
   "sentence": "one natural German example sentence using the flashcard word or a correct inflected/conjugated form",
   "translation": "English translation of the sentence",
-  "wordNote": "short note explaining the flashcard word in this sentence",
-  "grammarTip": "one short grammar or usage reminder connected to this sentence",
   "vocabulary": [
     { "word": "German word", "translation": "English translation", "note": "brief usage note or empty string" }
   ]
 }
 
-Keep it practical for memorizing this exact card. If the word is a verb, you may conjugate it naturally, but mention the infinitive in wordNote. If it is a noun, include its article when known.`;
+Keep it practical for memorizing this exact card. If the word is a verb, you may conjugate it naturally. If it is a noun, include its article in the vocabulary item when known.`;
   }
 
   if (mode === 'card-sentence') {
