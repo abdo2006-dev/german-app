@@ -22,6 +22,7 @@ type TranslationState = {
   contextualMeaning: string;
   literalMeaning: string;
   partOfSpeech: string;
+  grammar: ReadingTranslation['grammar'];
   usage: string;
   exampleGerman: string;
   exampleEnglish: string;
@@ -40,6 +41,15 @@ type TranslationState = {
 type CachedTranslation = ReadingTranslation;
 
 const WORD_PATTERN = /^[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?$/;
+const EMPTY_READING_GRAMMAR: ReadingTranslation['grammar'] = {
+  kind: '',
+  lemma: '',
+  article: '',
+  plural: '',
+  infinitive: '',
+  separablePrefix: '',
+  reflexive: false,
+};
 
 function normalizeWord(token: string) {
   return token
@@ -250,7 +260,8 @@ export default function Reading() {
 
     const cacheKey = query.toLocaleLowerCase();
     const transientCacheKey = `${selectedPassage.id}:${cacheKey}`;
-    const cached = selectedPassage.translations?.[cacheKey] ?? translationCache[transientCacheKey];
+    const storedTranslation = selectedPassage.translations?.[cacheKey] ?? translationCache[transientCacheKey];
+    const cached = storedTranslation?.grammar ? storedTranslation : undefined;
     const sentence = findSentence(selectedPassage.text, query);
 
     setTranslation({
@@ -259,6 +270,7 @@ export default function Reading() {
       contextualMeaning: cached?.contextualMeaning ?? cached?.translation ?? '',
       literalMeaning: cached?.literalMeaning ?? '',
       partOfSpeech: cached?.partOfSpeech ?? '',
+      grammar: cached?.grammar ?? EMPTY_READING_GRAMMAR,
       usage: cached?.usage ?? '',
       exampleGerman: cached?.exampleGerman ?? '',
       exampleEnglish: cached?.exampleEnglish ?? '',
@@ -281,6 +293,7 @@ export default function Reading() {
         contextualMeaning: translated.contextualMeaning || translated.translation,
         literalMeaning: translated.literalMeaning || '',
         partOfSpeech: translated.partOfSpeech || '',
+        grammar: translated.grammar ?? EMPTY_READING_GRAMMAR,
         usage: translated.usage || '',
         exampleGerman: translated.exampleGerman || '',
         exampleEnglish: translated.exampleEnglish || '',
@@ -304,6 +317,7 @@ export default function Reading() {
         contextualMeaning: enriched.contextualMeaning,
         literalMeaning: enriched.literalMeaning,
         partOfSpeech: enriched.partOfSpeech,
+        grammar: enriched.grammar,
         usage: enriched.usage,
         exampleGerman: enriched.exampleGerman,
         exampleEnglish: enriched.exampleEnglish,
@@ -327,6 +341,7 @@ export default function Reading() {
         contextualMeaning: '',
         literalMeaning: '',
         partOfSpeech: '',
+        grammar: EMPTY_READING_GRAMMAR,
         usage: '',
         exampleGerman: '',
         exampleEnglish: '',
@@ -621,6 +636,7 @@ async function fetchTranslation(word: string, sentence: string, passage: string)
   contextualMeaning: string;
   literalMeaning: string;
   partOfSpeech: string;
+  grammar: ReadingTranslation['grammar'];
   usage: string;
   exampleGerman: string;
   exampleEnglish: string;
@@ -643,6 +659,7 @@ async function fetchTranslation(word: string, sentence: string, passage: string)
     contextualMeaning: data.contextualMeaning ?? data.translation ?? '',
     literalMeaning: data.literalMeaning ?? '',
     partOfSpeech: data.partOfSpeech ?? '',
+    grammar: data.grammar ?? EMPTY_READING_GRAMMAR,
     usage: data.usage ?? '',
     exampleGerman: data.exampleGerman ?? '',
     exampleEnglish: data.exampleEnglish ?? '',
@@ -742,6 +759,20 @@ function TranslationBubble({
   onClose: () => void;
 }) {
   const meaning = state.contextualMeaning || state.translation;
+  const grammarItems = [
+    state.grammar.infinitive
+      ? { label: 'Infinitive', value: state.grammar.infinitive }
+      : null,
+    state.grammar.article && state.grammar.lemma
+      ? { label: 'Article', value: `${state.grammar.article} ${state.grammar.lemma}` }
+      : null,
+    state.grammar.plural
+      ? { label: 'Plural', value: state.grammar.plural }
+      : null,
+    state.grammar.separablePrefix
+      ? { label: 'Separable', value: state.grammar.separablePrefix }
+      : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item));
 
   return (
     <div className="fixed bottom-4 left-4 right-4 z-50 max-h-[min(78vh,720px)] overflow-hidden rounded-md border border-primary/20 bg-popover text-popover-foreground shadow-2xl md:left-auto md:w-[430px]">
@@ -769,6 +800,16 @@ function TranslationBubble({
           <div className="rounded-md border border-primary/25 bg-primary/[0.06] p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meaning here</p>
             <p className="mt-1 text-xl font-bold leading-snug text-foreground">{meaning}</p>
+            {grammarItems.length > 0 && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {grammarItems.map(item => (
+                  <div key={item.label} className="rounded-md border border-primary/15 bg-background/80 px-2.5 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                    <p className="mt-0.5 font-semibold text-foreground">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
             {(state.literalMeaning || state.partOfSpeech) && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {state.literalMeaning && (

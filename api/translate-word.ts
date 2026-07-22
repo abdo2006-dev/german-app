@@ -39,6 +39,15 @@ async function fetchFallbackTranslation(term: string) {
     contextualMeaning: translation,
     literalMeaning: translation,
     partOfSpeech: '',
+    grammar: {
+      kind: '',
+      lemma: '',
+      article: '',
+      plural: '',
+      infinitive: '',
+      separablePrefix: '',
+      reflexive: false,
+    },
     usage: '',
     exampleGerman: '',
     exampleEnglish: '',
@@ -52,12 +61,28 @@ async function fetchFallbackTranslation(term: string) {
 
 function normalizeResult(raw: any, term: string) {
   const contextualMeaning = String(raw?.contextualMeaning || raw?.translation || '').trim();
+  const rawGrammar = raw?.grammar && typeof raw.grammar === 'object' ? raw.grammar : {};
+  const kind = ['noun', 'verb', 'adjective', 'adverb', 'phrase', 'other'].includes(rawGrammar.kind)
+    ? rawGrammar.kind
+    : '';
+  const article = ['der', 'die', 'das'].includes(rawGrammar.article)
+    ? rawGrammar.article
+    : '';
   return {
     term: String(raw?.term || term).trim() || term,
     translation: contextualMeaning,
     contextualMeaning,
     literalMeaning: String(raw?.literalMeaning || '').trim(),
     partOfSpeech: String(raw?.partOfSpeech || '').trim(),
+    grammar: {
+      kind,
+      lemma: String(rawGrammar.lemma || '').trim(),
+      article,
+      plural: String(rawGrammar.plural || '').trim(),
+      infinitive: String(rawGrammar.infinitive || '').trim(),
+      separablePrefix: String(rawGrammar.separablePrefix || '').trim(),
+      reflexive: Boolean(rawGrammar.reflexive),
+    },
     usage: String(raw?.usage || '').trim(),
     exampleGerman: String(raw?.exampleGerman || '').trim(),
     exampleEnglish: String(raw?.exampleEnglish || '').trim(),
@@ -115,6 +140,15 @@ Return JSON with this exact shape:
   "contextualMeaning": "best English meaning in this sentence, concise but accurate",
   "literalMeaning": "literal/base meaning or empty string if same",
   "partOfSpeech": "noun/verb/adjective/adverb/expression/etc. plus article for nouns when known",
+  "grammar": {
+    "kind": "noun | verb | adjective | adverb | phrase | other",
+    "lemma": "dictionary/base form; for nouns use singular without article; for verbs use infinitive without sich unless reflexive",
+    "article": "der/die/das for nouns, otherwise empty string",
+    "plural": "plural form for nouns when known, otherwise empty string",
+    "infinitive": "infinitive for verbs; include sich if reflexive, otherwise empty string",
+    "separablePrefix": "separable prefix for verbs like aufstehen, otherwise empty string",
+    "reflexive": boolean
+  },
   "usage": "what this word/phrase is mostly used for, including register or common context",
   "exampleGerman": "one natural German example sentence using this word/phrase",
   "exampleEnglish": "English translation of exampleGerman",
@@ -126,7 +160,9 @@ Return JSON with this exact shape:
 
 Rules:
 - If the selected text is a phrase, translate the phrase as a whole, not word-by-word.
-- If the word is inflected or conjugated, explain the base form in partOfSpeech or note.
+- If the selected word is a conjugated verb, grammar.infinitive must contain the infinitive, e.g. "verhält" -> "sich verhalten".
+- If the selected word is a noun, grammar.article must be der/die/das and grammar.lemma must be the singular noun, e.g. "Aufenthalt" -> article "der", lemma "Aufenthalt".
+- If the word is inflected or conjugated, explain the visible form briefly in note.
 - Make memoryHook and memoryImage emotionally or visually memorable, but do not claim false cognates or invented etymology.
 - The recallPrompt should force active recall in under 10 seconds.
 - Keep explanations practical for a learner who wants to save this as a flashcard.

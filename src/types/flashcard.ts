@@ -136,6 +136,15 @@ export interface ReadingTranslation {
   contextualMeaning: string;
   literalMeaning: string;
   partOfSpeech: string;
+  grammar: {
+    kind: 'noun' | 'verb' | 'adjective' | 'adverb' | 'phrase' | 'other' | '';
+    lemma: string;
+    article: 'der' | 'die' | 'das' | '';
+    plural: string;
+    infinitive: string;
+    separablePrefix: string;
+    reflexive: boolean;
+  };
   usage: string;
   exampleGerman: string;
   exampleEnglish: string;
