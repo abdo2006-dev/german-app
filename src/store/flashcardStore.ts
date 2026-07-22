@@ -55,6 +55,22 @@ function buildReadingCardNote(details?: Partial<ReadingTranslation>): string {
   return rows.join('\n\n');
 }
 
+function getReadingCardGermanWord(word: string, details?: Partial<ReadingTranslation>): string {
+  const grammar = details?.grammar;
+  if (grammar?.kind === 'verb' && grammar.infinitive.trim()) return grammar.infinitive.trim();
+  if (grammar?.kind === 'noun' && grammar.article && grammar.lemma.trim()) {
+    return `${grammar.article} ${grammar.lemma.trim()}`;
+  }
+  if ((grammar?.kind === 'adjective' || grammar?.kind === 'adverb') && grammar.lemma.trim()) {
+    return grammar.lemma.trim();
+  }
+  return word.trim();
+}
+
+function normalizeGermanKey(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
 interface FlashcardState {
   folders: Folder[];
   decks: Deck[];
@@ -109,7 +125,7 @@ interface FlashcardState {
   deleteReadingPassage: (id: string) => void;
   saveReadingTranslation: (passageId: string, key: string, translation: ReadingTranslation) => void;
   addReadingWordToDeck: (passageId: string, word: string, translation: string, sentence: string, details?: Partial<ReadingTranslation>) => Card | null;
-  removeReadingWordFromDeck: (passageId: string, word: string) => boolean;
+  removeReadingWordFromDeck: (passageId: string, word: string, details?: Partial<ReadingTranslation>) => boolean;
 
   // Todo actions
   createTodo: (text: string, dueDate?: string) => Todo;
@@ -391,19 +407,33 @@ export const useFlashcardStore = create<FlashcardState>()(
       addReadingWordToDeck: (passageId, word, translation, sentence, details) => {
         const passage = get().readingPassages.find(p => p.id === passageId);
         if (!passage) return null;
-        const normalized = word.trim().toLocaleLowerCase();
+        const cardGermanWord = getReadingCardGermanWord(word, details);
+        const normalized = normalizeGermanKey(cardGermanWord);
+        const rawNormalized = normalizeGermanKey(word);
         if (!normalized || !translation.trim()) return null;
         const existing = get().cards.find(c =>
           c.deckId === passage.deckId &&
-          c.germanWord.trim().toLocaleLowerCase() === normalized
+          (normalizeGermanKey(c.germanWord) === normalized || normalizeGermanKey(c.germanWord) === rawNormalized)
         );
+        const now = new Date();
+        const linkedDeck = get().decks.find(deck => deck.id === passage.deckId);
+        const restoredDeck: Deck | null = linkedDeck ? null : {
+          id: passage.deckId,
+          folderId: null,
+          name: `Reading: ${passage.title}`,
+          settings: { ...DEFAULT_DECK_SETTINGS, newCardsPerDay: 9999 },
+          createdAt: now,
+          updatedAt: now,
+        };
         if (existing) {
           if (details) {
             const note = buildReadingCardNote(details);
             set((s) => ({
+              decks: restoredDeck ? [...s.decks, restoredDeck] : s.decks,
               cards: s.cards.map(card => card.id === existing.id
                 ? {
                     ...card,
+                    germanWord: cardGermanWord,
                     englishMeaning: translation.trim(),
                     germanExample: (details.exampleGerman || sentence).trim(),
                     englishExample: (details.exampleEnglish || '').trim(),
@@ -415,15 +445,15 @@ export const useFlashcardStore = create<FlashcardState>()(
             }));
             return get().cards.find(card => card.id === existing.id) ?? existing;
           }
+          if (restoredDeck) set((s) => ({ decks: [...s.decks, restoredDeck] }));
           return existing;
         }
 
-        const now = new Date();
         const note = buildReadingCardNote(details);
         const card: Card = {
           id: generateId(),
           deckId: passage.deckId,
-          germanWord: word.trim(),
+          germanWord: cardGermanWord,
           englishMeaning: translation.trim(),
           germanExample: (details?.exampleGerman || sentence).trim(),
           englishExample: (details?.exampleEnglish || '').trim(),
@@ -444,17 +474,21 @@ export const useFlashcardStore = create<FlashcardState>()(
           createdAt: now,
           updatedAt: now,
         };
-        set((s) => ({ cards: [...s.cards, card] }));
+        set((s) => ({
+          decks: restoredDeck ? [...s.decks, restoredDeck] : s.decks,
+          cards: [...s.cards, card],
+        }));
         return card;
       },
 
-      removeReadingWordFromDeck: (passageId, word) => {
+      removeReadingWordFromDeck: (passageId, word, details) => {
         const passage = get().readingPassages.find(p => p.id === passageId);
         if (!passage) return false;
-        const normalized = word.trim().toLocaleLowerCase();
+        const normalized = normalizeGermanKey(getReadingCardGermanWord(word, details));
+        const rawNormalized = normalizeGermanKey(word);
         const card = get().cards.find(c =>
           c.deckId === passage.deckId &&
-          c.germanWord.trim().toLocaleLowerCase() === normalized
+          (normalizeGermanKey(c.germanWord) === normalized || normalizeGermanKey(c.germanWord) === rawNormalized)
         );
         if (!card) return false;
 

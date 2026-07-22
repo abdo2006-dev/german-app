@@ -152,7 +152,7 @@ Return JSON with this exact shape:
   "partOfSpeech": "noun/verb/adjective/adverb/expression/etc. plus article for nouns when known",
   "grammar": {
     "kind": "noun | verb | adjective | adverb | phrase | other",
-    "lemma": "dictionary/base form; for nouns use singular without article; for verbs use infinitive without sich unless reflexive",
+    "lemma": "dictionary/base form; for nouns use singular without article; for verbs use infinitive without sich unless reflexive; for adjectives use the undeclined form",
     "article": "der/die/das for nouns, otherwise empty string",
     "plural": "plural form for nouns when known, otherwise empty string",
     "infinitive": "infinitive for verbs; include sich if reflexive, otherwise empty string",
@@ -173,7 +173,8 @@ Rules:
 - If selection mode is PHRASE, keep the same meaning boundaries as the German text. For example, if the German contains two clauses joined by "und", the English translation must include both clauses.
 - If selection mode is PHRASE, set grammar.kind to "phrase" and leave usage, exampleGerman, exampleEnglish, memoryHook, memoryImage, recallPrompt, and note as empty strings unless the phrase itself is a fixed idiom that needs one short note.
 - If the selected word is a conjugated verb, grammar.infinitive must contain the infinitive, e.g. "verhält" -> "sich verhalten".
-- If the selected word is a noun, grammar.article must be der/die/das and grammar.lemma must be the singular noun, e.g. "Aufenthalt" -> article "der", lemma "Aufenthalt".
+- If the selected word is a noun, grammar.article must be der/die/das and grammar.lemma must be the singular noun without article, even if the selected form is plural, dative, genitive, or accusative. Example: "Aufenthalt" -> article "der", lemma "Aufenthalt".
+- If the selected word is an adjective, grammar.lemma must be the undeclined dictionary form. Examples: "guten" -> "gut", "schönen" -> "schön", "deutschen" -> "deutsch".
 - If the word is inflected or conjugated, explain the visible form briefly in note.
 - Make memoryHook and memoryImage emotionally or visually memorable, but do not claim false cognates or invented etymology.
 - The recallPrompt should force active recall in under 10 seconds.

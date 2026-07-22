@@ -70,6 +70,22 @@ function getSelectionMode(text: string): 'word' | 'phrase' {
   return wordCount > 1 ? 'phrase' : 'word';
 }
 
+function getReadingStudyTerm(word: string, details?: Partial<ReadingTranslation>): string {
+  const grammar = details?.grammar;
+  if (grammar?.kind === 'verb' && grammar.infinitive.trim()) return grammar.infinitive.trim();
+  if (grammar?.kind === 'noun' && grammar.article && grammar.lemma.trim()) {
+    return `${grammar.article} ${grammar.lemma.trim()}`;
+  }
+  if ((grammar?.kind === 'adjective' || grammar?.kind === 'adverb') && grammar.lemma.trim()) {
+    return grammar.lemma.trim();
+  }
+  return word.trim();
+}
+
+function normalizeSavedKey(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
 function tokenize(text: string) {
   return text.match(/[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?|\s+|[^\sA-Za-zÄÖÜäöüß]+/g) ?? [];
 }
@@ -141,10 +157,20 @@ export default function Reading() {
 
   const selectedDeck = selectedPassage ? decks.find(deck => deck.id === selectedPassage.deckId) : null;
   const selectedDeckCards = selectedPassage ? cards.filter(card => card.deckId === selectedPassage.deckId) : [];
-  const savedWords = useMemo(
-    () => new Set(selectedDeckCards.map(card => card.germanWord.trim().toLocaleLowerCase())),
-    [selectedDeckCards]
-  );
+  const savedWords = useMemo(() => {
+    const keys = new Set(selectedDeckCards.map(card => normalizeSavedKey(card.germanWord)));
+    Object.entries(selectedPassage?.translations ?? {}).forEach(([rawSelection, details]) => {
+      const studyTerm = normalizeSavedKey(getReadingStudyTerm(rawSelection, details));
+      if (keys.has(studyTerm)) keys.add(normalizeSavedKey(rawSelection));
+    });
+    return keys;
+  }, [selectedDeckCards, selectedPassage?.translations]);
+
+  function isSelectionSaved(query: string, details?: Partial<ReadingTranslation>) {
+    const rawKey = normalizeSavedKey(query);
+    const studyKey = normalizeSavedKey(getReadingStudyTerm(query, details));
+    return savedWords.has(rawKey) || savedWords.has(studyKey);
+  }
 
   async function extractFromScreenshots(fileList: FileList | File[] | undefined) {
     const files = Array.from(fileList ?? []).filter(file => file.type.startsWith('image/'));
@@ -290,7 +316,7 @@ export default function Reading() {
       provider: cached ? cached.provider : 'Groq tutor',
       sentence: cached?.sentence || sentence,
       loading: !cached,
-      saved: savedWords.has(cacheKey),
+      saved: isSelectionSaved(query, cached),
       anchor,
     });
 
@@ -318,7 +344,7 @@ export default function Reading() {
       };
       if (!cached) saveReadingTranslation(selectedPassage.id, cacheKey, enriched);
       setTranslationCache(prev => ({ ...prev, [transientCacheKey]: enriched }));
-      const existing = savedWords.has(cacheKey);
+      const existing = isSelectionSaved(query, enriched);
       const saved = autoSaveWords
         ? Boolean(addReadingWordToDeck(selectedPassage.id, query, enriched.contextualMeaning, sentence, enriched))
         : existing;
@@ -363,7 +389,7 @@ export default function Reading() {
         provider: 'Groq tutor',
         sentence,
         loading: false,
-        saved: savedWords.has(cacheKey),
+        saved: isSelectionSaved(query),
         anchor,
         error: err.message ?? 'Could not translate this word.',
       });
@@ -386,7 +412,7 @@ export default function Reading() {
 
   function removeCurrentTranslation() {
     if (!selectedPassage || !translation) return;
-    const removed = removeReadingWordFromDeck(selectedPassage.id, translation.word);
+    const removed = removeReadingWordFromDeck(selectedPassage.id, translation.word, translation);
     if (!removed) return;
     setTranslation(prev => prev ? { ...prev, saved: false } : prev);
     toast.success('Removed from linked deck');
