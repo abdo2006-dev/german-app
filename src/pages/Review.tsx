@@ -12,6 +12,7 @@ import { useFlashcardStore } from "@/store/flashcardStore";
 import { getNextIntervals } from "@/lib/srs";
 import { buildDueQueue, getNextLearningDueAt, getSiblingKey, stableShuffle } from "@/lib/reviewQueue";
 import { getCardPriorityRank, parsePriorityWords } from "@/lib/wordMatch";
+import { PronounceButton } from "@/components/PronounceButton";
 import type { Card as CardType, GeneratedCardExample, Rating } from "@/types/flashcard";
 import { toast } from "sonner";
 
@@ -755,9 +756,12 @@ export default function Review() {
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
               {isGermanToEnglish ? "German → English" : "English → German"}
             </p>
-            <h2 className={cn("font-bold", isGermanToEnglish ? "german-word" : "english-word text-2xl md:text-3xl")}>
-              {isGermanToEnglish ? currentCard.germanWord : currentCard.englishMeaning}
-            </h2>
+            <div className="flex items-center justify-center gap-2">
+              <h2 className={cn("font-bold", isGermanToEnglish ? "german-word" : "english-word text-2xl md:text-3xl")}>
+                {isGermanToEnglish ? currentCard.germanWord : currentCard.englishMeaning}
+              </h2>
+              {isGermanToEnglish && <PronounceButton text={currentCard.germanWord} />}
+            </div>
           </div>
 
           {revealed && (
@@ -766,13 +770,19 @@ export default function Review() {
                 <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-2">
                   {isGermanToEnglish ? "English" : "German"}
                 </p>
-                <h3 className={cn("font-bold", isGermanToEnglish ? "english-word text-xl md:text-2xl" : "german-word text-2xl md:text-3xl")}>
-                  {isGermanToEnglish ? currentCard.englishMeaning : currentCard.germanWord}
-                </h3>
+                <div className="flex items-center justify-center gap-2">
+                  <h3 className={cn("font-bold", isGermanToEnglish ? "english-word text-xl md:text-2xl" : "german-word text-2xl md:text-3xl")}>
+                    {isGermanToEnglish ? currentCard.englishMeaning : currentCard.germanWord}
+                  </h3>
+                  {!isGermanToEnglish && <PronounceButton text={currentCard.germanWord} />}
+                </div>
               </div>
               {currentCard.germanExample && (
                 <div className="mt-4 p-4 bg-muted/40 rounded-lg text-left">
-                  <p className="example-sentence text-sm italic">„{currentCard.germanExample}"</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="example-sentence text-sm italic">„{currentCard.germanExample}"</p>
+                    <PronounceButton text={currentCard.germanExample} className="mt-[-4px]" />
+                  </div>
                   {currentCard.englishExample && (
                     <p className="text-xs text-muted-foreground mt-1.5">"{currentCard.englishExample}"</p>
                   )}
@@ -955,13 +965,32 @@ export default function Review() {
                   {aiExample.sentence && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">German</p>
-                      <p className="mt-1 text-base font-medium leading-relaxed">„{aiExample.sentence}"</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="mt-1 text-base font-medium leading-relaxed">„{aiExample.sentence}"</p>
+                        <PronounceButton text={aiExample.sentence} className="mt-1" />
+                      </div>
                     </div>
                   )}
                   {aiExample.translation && (
                     <div className="border-t pt-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">English</p>
                       <p className="mt-1 text-sm leading-relaxed text-muted-foreground">"{aiExample.translation}"</p>
+                    </div>
+                  )}
+                  {(aiExample.wordNote || aiExample.grammarTip) && (
+                    <div className="grid gap-2 border-t pt-3 sm:grid-cols-2">
+                      {aiExample.wordNote && (
+                        <div className="rounded-md bg-muted/45 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
+                          <p className="mt-1 text-sm leading-relaxed">{aiExample.wordNote}</p>
+                        </div>
+                      )}
+                      {aiExample.grammarTip && (
+                        <div className="rounded-md bg-muted/45 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
+                          <p className="mt-1 text-sm leading-relaxed">{aiExample.grammarTip}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                   {aiExample.vocabulary && aiExample.vocabulary.length > 0 && (
@@ -1243,6 +1272,22 @@ function SavedGeneratedExamples({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+              {(example.wordNote || example.grammarTip) && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {example.wordNote && (
+                    <div className="rounded-md bg-background/70 p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Word note</p>
+                      <p className="mt-1 text-xs leading-relaxed">{example.wordNote}</p>
+                    </div>
+                  )}
+                  {example.grammarTip && (
+                    <div className="rounded-md bg-background/70 p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Grammar tip</p>
+                      <p className="mt-1 text-xs leading-relaxed">{example.grammarTip}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

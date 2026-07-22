@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { PronounceButton } from '@/components/PronounceButton';
 import { toast } from 'sonner';
 import type { Card as CardType, DeckSettings } from '@/types/flashcard';
 
@@ -249,6 +250,7 @@ export default function DeckView() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium truncate">{card.germanWord}</span>
+                      <PronounceButton text={card.germanWord} className="h-6 w-6" />
                       <span className="text-muted-foreground">→</span>
                       <span className="text-muted-foreground truncate">{card.englishMeaning}</span>
                     </div>
