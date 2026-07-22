@@ -41,6 +41,7 @@ type TranslationState = {
 type CachedTranslation = ReadingTranslation;
 
 const WORD_PATTERN = /^[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?$/;
+const PHRASE_TRANSLATION_VERSION = 2;
 const EMPTY_READING_GRAMMAR: ReadingTranslation['grammar'] = {
   kind: '',
   lemma: '',
@@ -62,6 +63,11 @@ function normalizeSelection(text: string) {
     .replace(/\s+/g, ' ')
     .replace(/^[^A-Za-zÄÖÜäöüß]+|[^A-Za-zÄÖÜäöüß.!?]+$/g, '')
     .trim();
+}
+
+function getSelectionMode(text: string): 'word' | 'phrase' {
+  const wordCount = normalizeSelection(text).match(/[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?/g)?.length ?? 0;
+  return wordCount > 1 ? 'phrase' : 'word';
 }
 
 function tokenize(text: string) {
@@ -261,7 +267,10 @@ export default function Reading() {
     const cacheKey = query.toLocaleLowerCase();
     const transientCacheKey = `${selectedPassage.id}:${cacheKey}`;
     const storedTranslation = selectedPassage.translations?.[cacheKey] ?? translationCache[transientCacheKey];
-    const cached = storedTranslation?.grammar ? storedTranslation : undefined;
+    const translationMode = getSelectionMode(query);
+    const cached = storedTranslation?.grammar && (
+      translationMode === 'word' || storedTranslation.translationVersion === PHRASE_TRANSLATION_VERSION
+    ) ? storedTranslation : undefined;
     const sentence = findSentence(selectedPassage.text, query);
 
     setTranslation({
@@ -293,6 +302,8 @@ export default function Reading() {
         contextualMeaning: translated.contextualMeaning || translated.translation,
         literalMeaning: translated.literalMeaning || '',
         partOfSpeech: translated.partOfSpeech || '',
+        translationMode,
+        translationVersion: translationMode === 'phrase' ? PHRASE_TRANSLATION_VERSION : 1,
         grammar: translated.grammar ?? EMPTY_READING_GRAMMAR,
         usage: translated.usage || '',
         exampleGerman: translated.exampleGerman || '',
@@ -649,7 +660,7 @@ async function fetchTranslation(word: string, sentence: string, passage: string)
   const res = await fetch('/api/translate-word', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q: word, sentence, passage }),
+    body: JSON.stringify({ q: word, sentence, passage, selectionMode: getSelectionMode(word) }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Translation error ${res.status}`);
@@ -800,7 +811,9 @@ function TranslationBubble({
       ) : (
         <div className="max-h-[calc(min(78vh,720px)-76px)] space-y-3 overflow-y-auto px-4 pb-4">
           <div className="rounded-md border border-primary/25 bg-primary/[0.06] p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meaning here</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {isPhraseSelection ? 'Full phrase translation' : 'Meaning here'}
+            </p>
             <p className="mt-1 text-xl font-bold leading-snug text-foreground">{meaning}</p>
             {grammarItems.length > 0 && (
               <div className="mt-3 grid gap-2 sm:grid-cols-2">

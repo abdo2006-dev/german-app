@@ -136,6 +136,8 @@ export interface ReadingTranslation {
   contextualMeaning: string;
   literalMeaning: string;
   partOfSpeech: string;
+  translationMode?: 'word' | 'phrase';
+  translationVersion?: number;
   grammar: {
     kind: 'noun' | 'verb' | 'adjective' | 'adverb' | 'phrase' | 'other' | '';
     lemma: string;

@@ -22,7 +22,11 @@ function parseJsonResponse(content: string) {
   }
 }
 
-async function fetchFallbackTranslation(term: string) {
+function countGermanWords(text: string) {
+  return text.match(/[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?/g)?.length ?? 0;
+}
+
+async function fetchFallbackTranslation(term: string, isPhrase = false) {
   const url = `${MYMEMORY_URL}?q=${encodeURIComponent(term)}&langpair=${encodeURIComponent('de|en')}`;
   const translateRes = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!translateRes.ok) throw new Error(`Translation service returned ${translateRes.status}`);
@@ -38,9 +42,9 @@ async function fetchFallbackTranslation(term: string) {
     translation,
     contextualMeaning: translation,
     literalMeaning: translation,
-    partOfSpeech: '',
+    partOfSpeech: isPhrase ? 'phrase' : '',
     grammar: {
-      kind: '',
+      kind: isPhrase ? 'phrase' : '',
       lemma: '',
       article: '',
       plural: '',
@@ -54,12 +58,12 @@ async function fetchFallbackTranslation(term: string) {
     memoryHook: '',
     memoryImage: '',
     recallPrompt: '',
-    note: 'Fallback dictionary translation. For better nuance, try again when the Groq tutor is available.',
+    note: isPhrase ? '' : 'Fallback dictionary translation. For better nuance, try again when the Groq tutor is available.',
     provider: 'MyMemory fallback',
   };
 }
 
-function normalizeResult(raw: any, term: string) {
+function normalizeResult(raw: any, term: string, isPhrase = false) {
   const contextualMeaning = String(raw?.contextualMeaning || raw?.translation || '').trim();
   const rawGrammar = raw?.grammar && typeof raw.grammar === 'object' ? raw.grammar : {};
   const kind = ['noun', 'verb', 'adjective', 'adverb', 'phrase', 'other'].includes(rawGrammar.kind)
@@ -69,13 +73,13 @@ function normalizeResult(raw: any, term: string) {
     ? rawGrammar.article
     : '';
   return {
-    term: String(raw?.term || term).trim() || term,
+    term: isPhrase ? term : (String(raw?.term || term).trim() || term),
     translation: contextualMeaning,
     contextualMeaning,
     literalMeaning: String(raw?.literalMeaning || '').trim(),
-    partOfSpeech: String(raw?.partOfSpeech || '').trim(),
+    partOfSpeech: String(raw?.partOfSpeech || (isPhrase ? 'phrase' : '')).trim(),
     grammar: {
-      kind,
+      kind: isPhrase ? 'phrase' : kind,
       lemma: String(rawGrammar.lemma || '').trim(),
       article,
       plural: String(rawGrammar.plural || '').trim(),
@@ -100,7 +104,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const rawTerm = req.method === 'GET' ? req.query.q : req.body?.q;
-  const term = (Array.isArray(rawTerm) ? rawTerm[0] : rawTerm)?.toString().trim().slice(0, 240) ?? '';
+  const term = (Array.isArray(rawTerm) ? rawTerm[0] : rawTerm)?.toString().trim().slice(0, 700) ?? '';
+  const requestedSelectionMode = req.method === 'POST' && req.body?.selectionMode === 'phrase' ? 'phrase' : 'word';
+  const isPhrase = requestedSelectionMode === 'phrase' || countGermanWords(term) > 1;
   const sentence = req.method === 'POST' && typeof req.body?.sentence === 'string'
     ? req.body.sentence.trim().slice(0, 900)
     : '';
@@ -115,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     try {
-      return res.status(200).json(await fetchFallbackTranslation(term));
+      return res.status(200).json(await fetchFallbackTranslation(term, isPhrase));
     } catch (err: any) {
       return res.status(500).json({ error: err.message ?? 'Translation failed.' });
     }
@@ -123,10 +129,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const systemPrompt = `You are a precise German reading tutor for A2/B1 learners.
 Translate the selected German word or phrase according to its exact context.
+For phrase selections, translate the entire selected text completely. Do not summarize, shorten, or translate only the most important part.
 Prefer natural English meaning over literal dictionary meaning, but include the literal/base meaning separately when useful.
 Return valid JSON only. Do not include markdown.`;
 
-  const userPrompt = `Selected German text: ${term}
+  const userPrompt = `Selection mode: ${isPhrase ? 'PHRASE - translate the full selected span' : 'WORD - vocabulary lookup'}
+
+Selected German text:
+${term}
 
 Sentence containing the selection:
 ${sentence || '(not provided)'}
@@ -137,7 +147,7 @@ ${passage || '(not provided)'}
 Return JSON with this exact shape:
 {
   "term": "selected German text",
-  "contextualMeaning": "best English meaning in this sentence, concise but accurate",
+  "contextualMeaning": "complete English translation of the entire selected text; if phrase mode, cover every clause and important word in the selected text",
   "literalMeaning": "literal/base meaning or empty string if same",
   "partOfSpeech": "noun/verb/adjective/adverb/expression/etc. plus article for nouns when known",
   "grammar": {
@@ -159,7 +169,9 @@ Return JSON with this exact shape:
 }
 
 Rules:
-- If the selected text is a phrase, translate the phrase as a whole, not word-by-word. Set grammar.kind to "phrase" and leave usage, exampleGerman, exampleEnglish, memoryHook, memoryImage, recallPrompt, and note as empty strings unless the phrase itself is a fixed idiom that needs one short note.
+- If selection mode is PHRASE, contextualMeaning must translate the whole selected span, not just one word, not just one clause, and not a summary.
+- If selection mode is PHRASE, keep the same meaning boundaries as the German text. For example, if the German contains two clauses joined by "und", the English translation must include both clauses.
+- If selection mode is PHRASE, set grammar.kind to "phrase" and leave usage, exampleGerman, exampleEnglish, memoryHook, memoryImage, recallPrompt, and note as empty strings unless the phrase itself is a fixed idiom that needs one short note.
 - If the selected word is a conjugated verb, grammar.infinitive must contain the infinitive, e.g. "verhält" -> "sich verhalten".
 - If the selected word is a noun, grammar.article must be der/die/das and grammar.lemma must be the singular noun, e.g. "Aufenthalt" -> article "der", lemma "Aufenthalt".
 - If the word is inflected or conjugated, explain the visible form briefly in note.
@@ -178,7 +190,7 @@ Rules:
       body: JSON.stringify({
         model: process.env.GROQ_MODEL || DEFAULT_MODEL,
         temperature: 0.15,
-        max_tokens: 700,
+        max_tokens: isPhrase ? 900 : 700,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: systemPrompt },
@@ -190,23 +202,23 @@ Rules:
     if (!groqRes.ok) {
       const errorData = await groqRes.json().catch(() => ({}));
       console.error('Groq translate API error:', groqRes.status, errorData);
-      return res.status(200).json(await fetchFallbackTranslation(term));
+      return res.status(200).json(await fetchFallbackTranslation(term, isPhrase));
     }
 
     const data = await groqRes.json();
     const content = data.choices?.[0]?.message?.content ?? '';
     if (!content) return res.status(502).json({ error: 'Empty response from Groq.' });
 
-    const result = normalizeResult(parseJsonResponse(content), term);
+    const result = normalizeResult(parseJsonResponse(content), term, isPhrase);
     if (!result.contextualMeaning) {
-      return res.status(200).json(await fetchFallbackTranslation(term));
+      return res.status(200).json(await fetchFallbackTranslation(term, isPhrase));
     }
 
     return res.status(200).json(result);
   } catch (err: any) {
     console.error('translate-word error:', err);
     try {
-      return res.status(200).json(await fetchFallbackTranslation(term));
+      return res.status(200).json(await fetchFallbackTranslation(term, isPhrase));
     } catch {
       return res.status(500).json({ error: err.message ?? 'Internal server error' });
     }
