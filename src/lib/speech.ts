@@ -96,3 +96,56 @@ export async function speakGerman(text: string): Promise<boolean> {
 export function stopSpeaking() {
   if (isSpeechSupported()) window.speechSynthesis.cancel();
 }
+
+export type SpeechController = { stop: () => void };
+
+/**
+ * Reads a longer passage aloud, sentence by sentence. Chrome silently cuts off
+ * a single very long utterance after ~15s, so queueing shorter per-sentence
+ * utterances (the standard workaround) keeps long readings from dying midway.
+ * Calls onEnd once the whole passage has finished (or immediately if speech
+ * isn't supported).
+ */
+export async function speakGermanPassage(text: string, onEnd: () => void): Promise<SpeechController> {
+  if (!isSpeechSupported() || !text.trim()) {
+    onEnd();
+    return { stop: () => {} };
+  }
+
+  const synth = window.speechSynthesis;
+  synth.cancel();
+
+  const sentences = text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (sentences.length === 0) {
+    onEnd();
+    return { stop: () => {} };
+  }
+
+  const voices = await loadVoices();
+  const voice = pickGermanVoice(voices);
+  let stopped = false;
+
+  sentences.forEach((sentence, index) => {
+    const utterance = new SpeechSynthesisUtterance(sentence);
+    utterance.lang = voice?.lang || "de-DE";
+    if (voice) utterance.voice = voice;
+    utterance.rate = 0.95;
+    if (index === sentences.length - 1) {
+      utterance.onend = () => { if (!stopped) onEnd(); };
+      utterance.onerror = () => { if (!stopped) onEnd(); };
+    }
+    synth.speak(utterance);
+  });
+
+  return {
+    stop: () => {
+      stopped = true;
+      synth.cancel();
+    },
+  };
+}

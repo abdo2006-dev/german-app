@@ -1,17 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent, Dispatch, DragEvent, MouseEvent, SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, BookOpen, CheckCircle2, ExternalLink, FileImage, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { AlertCircle, BookOpen, CheckCircle2, ChevronDown, ExternalLink, FileImage, Loader2, Plus, Sparkles, Square, Trash2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useFlashcardStore } from '@/store/flashcardStore';
 import { cn } from '@/lib/utils';
+import { speakGermanPassage, stopSpeaking, type SpeechController } from '@/lib/speech';
 import type { ReadingPassage, ReadingQuestion, ReadingTranslation } from '@/types/flashcard';
 
 type TranslationState = {
@@ -92,11 +94,34 @@ export default function Reading() {
   const [autoSaveWords, setAutoSaveWords] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [shownAnswers, setShownAnswers] = useState<Record<string, boolean>>({});
+  const [screenshotSectionOpen, setScreenshotSectionOpen] = useState(false);
+  const [isReadingAloud, setIsReadingAloud] = useState(false);
+  const speechControllerRef = useRef<SpeechController | null>(null);
 
   const selectedPassage = useMemo(
     () => readingPassages.find(passage => passage.id === selectedPassageId) ?? readingPassages[0] ?? null,
     [readingPassages, selectedPassageId]
   );
+
+  // Stop any in-progress read-aloud when switching passages or leaving the page.
+  useEffect(() => {
+    return () => {
+      speechControllerRef.current?.stop();
+      stopSpeaking();
+    };
+  }, [selectedPassageId]);
+
+  async function toggleReadAloud() {
+    if (isReadingAloud) {
+      speechControllerRef.current?.stop();
+      setIsReadingAloud(false);
+      return;
+    }
+    if (!selectedPassage) return;
+    setIsReadingAloud(true);
+    const controller = await speakGermanPassage(selectedPassage.text, () => setIsReadingAloud(false));
+    speechControllerRef.current = controller;
+  }
 
   const selectedDeck = selectedPassage ? decks.find(deck => deck.id === selectedPassage.deckId) : null;
   const selectedDeckCards = selectedPassage ? cards.filter(card => card.deckId === selectedPassage.deckId) : [];
@@ -345,6 +370,7 @@ export default function Reading() {
     deleteReadingPassage(passage.id);
     setSelectedPassageId(null);
     setTranslation(null);
+    setIsReadingAloud(false);
     toast.success('Reading passage deleted');
   }
 
@@ -380,89 +406,6 @@ export default function Reading() {
               </div>
               <div className="space-y-1.5">
                 <Label>Text</Label>
-                <div
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setDraggingImage(true);
-                  }}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDragLeave={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                      setDraggingImage(false);
-                    }
-                  }}
-                  onDrop={handleScreenshotDrop}
-                  className={cn(
-                    'rounded-md border bg-muted/15 p-3 transition-colors',
-                    draggingImage && 'border-primary bg-primary/5',
-                    extractingImage && 'pointer-events-none opacity-80'
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="rounded-md border bg-background p-1.5">
-                      {extractingImage ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <FileImage className="h-4 w-4 text-primary" />}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">Extract screenshots</p>
-                      <p className="text-xs text-muted-foreground">Drag, paste, or choose multiple images.</p>
-                    </div>
-                  </div>
-
-                  <input
-                    id="reading-screenshot-upload"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(event) => {
-                      void extractFromScreenshots(event.target.files);
-                      event.target.value = '';
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={extractingImage}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      document.getElementById('reading-screenshot-upload')?.click();
-                    }}
-                    className="mt-3 w-full"
-                  >
-                    {extractingImage ? 'Extracting...' : 'Choose Images'}
-                  </Button>
-
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onPaste={handleScreenshotPaste}
-                    onClick={() => document.getElementById('reading-screenshot-upload')?.click()}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        document.getElementById('reading-screenshot-upload')?.click();
-                      }
-                    }}
-                    className={cn(
-                      'mt-3 rounded-md border border-dashed bg-background/65 px-3 py-2 text-center text-xs text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary',
-                      draggingImage && 'border-primary bg-primary/5 text-primary'
-                    )}
-                  >
-                    Drop screenshots here or focus this area and paste
-                  </div>
-
-                  {imageExtractError && (
-                    <p className="mt-3 rounded-md border border-amber-200 bg-amber-50/80 p-2 text-sm leading-relaxed text-amber-900">
-                      {imageExtractError}
-                    </p>
-                  )}
-                  {imageExtractNote && (
-                    <p className="mt-3 rounded-md border bg-background p-2 text-sm leading-relaxed text-muted-foreground">
-                      {imageExtractNote}
-                    </p>
-                  )}
-                </div>
                 <Textarea
                   value={text}
                   onChange={(event) => setText(event.target.value)}
@@ -470,6 +413,78 @@ export default function Reading() {
                   className="min-h-[180px] resize-none"
                 />
               </div>
+
+              <Collapsible open={screenshotSectionOpen} onOpenChange={setScreenshotSectionOpen}>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-md py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <FileImage className="h-3.5 w-3.5" />
+                      Or extract text from screenshots
+                    </span>
+                    <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', screenshotSectionOpen && 'rotate-180')} />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-2">
+                  <div
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setDraggingImage(true);
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setDraggingImage(false);
+                      }
+                    }}
+                    onDrop={handleScreenshotDrop}
+                    className={cn(
+                      'rounded-md border border-dashed bg-muted/15 p-3 text-center transition-colors',
+                      draggingImage && 'border-primary bg-primary/5',
+                      extractingImage && 'pointer-events-none opacity-80'
+                    )}
+                  >
+                    <p className="text-xs text-muted-foreground">Drag, paste, or choose up to 8 screenshots.</p>
+
+                    <input
+                      id="reading-screenshot-upload"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(event) => {
+                        void extractFromScreenshots(event.target.files);
+                        event.target.value = '';
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={extractingImage}
+                      onClick={() => document.getElementById('reading-screenshot-upload')?.click()}
+                      className="mt-2 w-full gap-2"
+                    >
+                      {extractingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileImage className="h-3.5 w-3.5" />}
+                      {extractingImage ? 'Extracting...' : 'Choose Images'}
+                    </Button>
+
+                    {imageExtractError && (
+                      <p className="mt-3 rounded-md border border-amber-200 bg-amber-50/80 p-2 text-left text-sm leading-relaxed text-amber-900">
+                        {imageExtractError}
+                      </p>
+                    )}
+                    {imageExtractNote && (
+                      <p className="mt-3 rounded-md border bg-background p-2 text-left text-sm leading-relaxed text-muted-foreground">
+                        {imageExtractNote}
+                      </p>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
               {createError && (
                 <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
@@ -502,6 +517,7 @@ export default function Reading() {
                         setTranslation(null);
                         setAnswers({});
                         setShownAnswers({});
+                        setIsReadingAloud(false);
                       }}
                       className={cn(
                         'w-full rounded-md border p-3 text-left transition-colors',
@@ -541,20 +557,26 @@ export default function Reading() {
                       Click or select text to translate it. Use Save to Deck only for words or phrases you want to review.
                     </p>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => removePassage(selectedPassage)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button variant="outline" size="sm" onClick={toggleReadAloud} className="gap-2">
+                      {isReadingAloud ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                      {isReadingAloud ? 'Stop' : 'Read Aloud'}
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => removePassage(selectedPassage)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center gap-2 rounded-md border bg-muted/25 px-3 py-2">
-                    <Checkbox
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="auto-save-words" className="cursor-pointer text-sm text-muted-foreground">
+                      Auto-save clicked words to linked deck
+                    </Label>
+                    <Switch
                       id="auto-save-words"
                       checked={autoSaveWords}
                       onCheckedChange={(value) => setAutoSaveWords(Boolean(value))}
                     />
-                    <Label htmlFor="auto-save-words" className="cursor-pointer text-sm">
-                      Auto-save clicked words to linked deck (off by default)
-                    </Label>
                   </div>
                   <ReadableText text={selectedPassage.text} onTranslate={translateText} savedWords={savedWords} />
                   {translation && (
