@@ -139,7 +139,7 @@ Return JSON with this exact shape:
   "mode": "card-question",
   "answer": "clear direct answer to the learner's question",
   "quickContrast": [
-    { "term": "German term", "meaning": "English meaning", "register": "formal/informal/neutral or empty string", "example": "short German example" }
+    { "term": "German term", "meaning": "English meaning", "usage": "when to use it, register, and common context", "register": "formal/informal/neutral or empty string", "example": "short German example" }
   ],
   "examples": [
     { "german": "German example sentence", "english": "English translation", "note": "why this example matters or empty string" }

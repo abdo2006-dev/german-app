@@ -42,7 +42,7 @@ type CardSentenceCheck = {
 };
 type CardQuestionAnswer = {
   answer?: string;
-  quickContrast?: { term: string; meaning: string; register?: string; example?: string }[];
+  quickContrast?: { term: string; meaning: string; usage?: string; register?: string; example?: string }[];
   examples?: { german: string; english: string; note?: string }[];
   ruleReminder?: string;
 };
@@ -541,11 +541,12 @@ export default function Review() {
 
     if (answer.quickContrast?.length) {
       blocks.push(
-        "Quick contrast:",
+        "Study cards:",
         ...answer.quickContrast.slice(0, 4).map(item => {
           const register = item.register ? ` (${item.register})` : "";
-          const example = item.example ? ` Example: ${item.example}` : "";
-          return `- ${item.term}: ${item.meaning}${register}.${example}`;
+          const usage = item.usage || item.register || "See example/context";
+          const example = item.example || "";
+          return `${item.term} | Meaning: ${item.meaning}${register} | Usage: ${usage} | Example: ${example}`;
         })
       );
     }
@@ -1151,6 +1152,33 @@ export default function Review() {
   );
 }
 
+type ParsedStudyCardNote = {
+  term: string;
+  fields: { label: string; value: string }[];
+};
+
+function parseStudyCardNoteLine(line: string): ParsedStudyCardNote | null {
+  const parts = line
+    .replace(/^[-•]\s*/, "")
+    .split("|")
+    .map(part => part.trim())
+    .filter(Boolean);
+
+  if (parts.length < 3) return null;
+
+  const labels = ["Meaning", "Usage", "Example"];
+  const fields = parts.slice(1).map((part, index) => {
+    const match = part.match(/^([A-Za-z ]{2,24}):\s*(.+)$/);
+    return {
+      label: match?.[1]?.trim() || labels[index] || `Note ${index + 1}`,
+      value: (match?.[2] || part).trim(),
+    };
+  }).filter(field => field.value);
+
+  if (!parts[0] || fields.length === 0) return null;
+  return { term: parts[0], fields };
+}
+
 function ReadableCardNote({ note }: { note: string }) {
   const sections = note
     .trim()
@@ -1162,6 +1190,40 @@ function ReadableCardNote({ note }: { note: string }) {
     <div className="space-y-2.5">
       {sections.map((section, sectionIndex) => {
         const lines = section.split(/\n+/).map(line => line.trim()).filter(Boolean);
+        const parsedStudyCards = lines
+          .map(parseStudyCardNoteLine)
+          .filter((card): card is ParsedStudyCardNote => Boolean(card));
+
+        if (parsedStudyCards.length > 0) {
+          const introLines = lines.filter(line => !parseStudyCardNoteLine(line) && !/^study cards:?$/i.test(line));
+          return (
+            <div key={`${section.slice(0, 24)}-${sectionIndex}`} className="rounded-md border bg-background p-3 shadow-sm">
+              {introLines.length > 0 && (
+                <div className="mb-3 rounded-md bg-muted/25 px-3 py-2">
+                  {introLines.map((line) => (
+                    <p key={line} className="text-sm leading-6 text-muted-foreground">{line}</p>
+                  ))}
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {parsedStudyCards.map((card) => (
+                  <div key={card.term} className="rounded-md border bg-muted/20 p-3">
+                    <p className="text-base font-bold leading-snug">{card.term}</p>
+                    <div className="mt-3 space-y-2">
+                      {card.fields.map((field) => (
+                        <div key={`${card.term}-${field.label}`}>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{field.label}</p>
+                          <p className="mt-0.5 text-sm leading-6">{field.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
         const grouped = lines.reduce<Array<{ label?: string; body: string[]; title?: boolean }>>((acc, line, lineIndex) => {
           const bullet = line.match(/^[-•]\s*(.+)$/);
           const label = line.match(/^([^:]{2,32}):\s*(.+)$/);
