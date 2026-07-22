@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Dispatch, MouseEvent, SetStateAction } from 'react';
+import type { ClipboardEvent, Dispatch, DragEvent, MouseEvent, SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, BookOpen, CheckCircle2, ExternalLink, FileImage, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -84,6 +84,7 @@ export default function Reading() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [extractingImage, setExtractingImage] = useState(false);
+  const [draggingImage, setDraggingImage] = useState(false);
   const [imageExtractError, setImageExtractError] = useState<string | null>(null);
   const [imageExtractNote, setImageExtractNote] = useState<string | null>(null);
   const [translation, setTranslation] = useState<TranslationState | null>(null);
@@ -104,14 +105,19 @@ export default function Reading() {
     [selectedDeckCards]
   );
 
-  async function extractFromScreenshot(file: File | undefined) {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setImageExtractError('Upload an image screenshot.');
+  async function extractFromScreenshots(fileList: FileList | File[] | undefined) {
+    const files = Array.from(fileList ?? []).filter(file => file.type.startsWith('image/'));
+    if (files.length === 0) {
+      setImageExtractError('Upload, drop, or paste image screenshots.');
       return;
     }
-    if (file.size > 3_400_000) {
-      setImageExtractError('This screenshot is too large. Crop it tighter or use a smaller image.');
+    if (files.length > 8) {
+      setImageExtractError('Use up to 8 screenshots at once so extraction stays reliable.');
+      return;
+    }
+    const oversized = files.find(file => file.size > 3_400_000);
+    if (oversized) {
+      setImageExtractError(`"${oversized.name || 'This screenshot'}" is too large. Crop it tighter or use a smaller image.`);
       return;
     }
 
@@ -120,25 +126,58 @@ export default function Reading() {
     setImageExtractNote(null);
 
     try {
-      const imageData = await readFileAsDataUrl(file);
-      const res = await fetch('/api/extract-reading-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `OCR error ${res.status}`);
+      const extracted = [];
+      for (let index = 0; index < files.length; index += 1) {
+        setImageExtractNote(`Extracting screenshot ${index + 1} of ${files.length}...`);
+        const imageData = await readFileAsDataUrl(files[index]);
+        const res = await fetch('/api/extract-reading-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageData }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `OCR error ${res.status}`);
+        extracted.push({
+          title: String(data.title ?? '').trim(),
+          text: String(data.text ?? '').trim(),
+          layoutNotes: String(data.layoutNotes ?? '').trim(),
+        });
+      }
 
-      if (!title.trim() && data.title) setTitle(data.title);
-      setText(data.text ?? '');
-      setImageExtractNote(data.layoutNotes || 'Screenshot text extracted. Check the text box before creating the reading.');
+      const firstTitle = extracted.find(item => item.title)?.title;
+      if (!title.trim() && firstTitle) setTitle(firstTitle);
+      const combinedText = extracted
+        .map((item, index) => files.length > 1 ? `[Screenshot ${index + 1}]\n${item.text}` : item.text)
+        .filter(Boolean)
+        .join('\n\n');
+
+      setText(prev => [prev.trim(), combinedText].filter(Boolean).join('\n\n'));
+      const notes = extracted.map(item => item.layoutNotes).filter(Boolean);
+      setImageExtractNote(
+        notes.length
+          ? notes.join(' ')
+          : `${files.length} screenshot${files.length === 1 ? '' : 's'} extracted. Check the text box before creating the reading.`
+      );
       setCreateError(null);
-      toast.success('Screenshot text extracted');
+      toast.success(`${files.length} screenshot${files.length === 1 ? '' : 's'} extracted`);
     } catch (err: any) {
       setImageExtractError(err.message ?? 'Could not extract text from this screenshot.');
     } finally {
       setExtractingImage(false);
     }
+  }
+
+  function handleScreenshotDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDraggingImage(false);
+    void extractFromScreenshots(event.dataTransfer.files);
+  }
+
+  function handleScreenshotPaste(event: ClipboardEvent<HTMLDivElement>) {
+    const files = Array.from(event.clipboardData.files).filter(file => file.type.startsWith('image/'));
+    if (files.length === 0) return;
+    event.preventDefault();
+    void extractFromScreenshots(files);
   }
 
   async function createPassage() {
@@ -331,27 +370,61 @@ export default function Reading() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base">New Paragraph</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3" onPaste={handleScreenshotPaste}>
               <div className="space-y-1.5">
                 <Label>Title</Label>
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Timos Blog..." />
               </div>
               <div className="space-y-1.5">
                 <Label>Text</Label>
-                <div className="rounded-md border bg-muted/20 p-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-medium">Extract from screenshot</p>
-                      <p className="text-xs text-muted-foreground">Best for PDF pages, tables, and messy copied text.</p>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setDraggingImage(true);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setDraggingImage(false);
+                    }
+                  }}
+                  onDrop={handleScreenshotDrop}
+                  onPaste={handleScreenshotPaste}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      document.getElementById('reading-screenshot-upload')?.click();
+                    }
+                  }}
+                  className={cn(
+                    'rounded-md border border-dashed bg-muted/20 p-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary',
+                    draggingImage && 'border-primary bg-primary/5',
+                    extractingImage && 'pointer-events-none opacity-80'
+                  )}
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-md border bg-background p-2">
+                        {extractingImage ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <FileImage className="h-5 w-5 text-primary" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Extract from screenshots</p>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Drag images here, paste a screenshot anywhere in this form, or upload multiple images.
+                        </p>
+                      </div>
                     </div>
                     <div>
                       <input
                         id="reading-screenshot-upload"
                         type="file"
                         accept="image/*"
+                        multiple
                         className="hidden"
                         onChange={(event) => {
-                          void extractFromScreenshot(event.target.files?.[0]);
+                          void extractFromScreenshots(event.target.files);
                           event.target.value = '';
                         }}
                       />
@@ -360,11 +433,13 @@ export default function Reading() {
                         variant="outline"
                         size="sm"
                         disabled={extractingImage}
-                        onClick={() => document.getElementById('reading-screenshot-upload')?.click()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          document.getElementById('reading-screenshot-upload')?.click();
+                        }}
                         className="w-full gap-2 sm:w-auto"
                       >
-                        {extractingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileImage className="h-4 w-4" />}
-                        {extractingImage ? 'Extracting...' : 'Upload Screenshot'}
+                        {extractingImage ? 'Extracting...' : 'Choose Images'}
                       </Button>
                     </div>
                   </div>
