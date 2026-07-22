@@ -7,7 +7,7 @@ import { persist } from 'zustand/middleware';
 import {
   Folder, Deck, Card, DeckSettings, DEFAULT_DECK_SETTINGS,
   CardTemplate, Rating, ReviewLog, DeckStats, ParsedEntry, CardState, Todo,
-  ReadingPassage, ReadingQuestion,
+  ReadingPassage, ReadingQuestion, ReadingTranslation,
 } from '@/types/flashcard';
 import { scheduleCard } from '@/lib/srs';
 
@@ -35,6 +35,18 @@ function deserializeDates(obj: any, dateFields: string[]): any {
 /** Get YYYY-MM-DD string for a Date (local) */
 function toDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function buildReadingCardNote(details?: Partial<ReadingTranslation>): string {
+  if (!details) return '';
+  const rows = [
+    details.contextualMeaning ? `Meaning in this text: ${details.contextualMeaning}` : '',
+    details.literalMeaning ? `Literal/base meaning: ${details.literalMeaning}` : '',
+    details.partOfSpeech ? `Part of speech: ${details.partOfSpeech}` : '',
+    details.usage ? `Mostly used for: ${details.usage}` : '',
+    details.note ? `Context note: ${details.note}` : '',
+  ].filter(Boolean);
+  return rows.join('\n\n');
 }
 
 interface FlashcardState {
@@ -89,7 +101,8 @@ interface FlashcardState {
   // Reading actions
   createReadingPassage: (title: string, text: string, questions: ReadingQuestion[]) => ReadingPassage;
   deleteReadingPassage: (id: string) => void;
-  addReadingWordToDeck: (passageId: string, word: string, translation: string, sentence: string) => Card | null;
+  saveReadingTranslation: (passageId: string, key: string, translation: ReadingTranslation) => void;
+  addReadingWordToDeck: (passageId: string, word: string, translation: string, sentence: string, details?: Partial<ReadingTranslation>) => Card | null;
   removeReadingWordFromDeck: (passageId: string, word: string) => boolean;
 
   // Todo actions
@@ -333,6 +346,7 @@ export const useFlashcardStore = create<FlashcardState>()(
           text,
           deckId: deck.id,
           questions,
+          translations: {},
           createdAt: now,
           updatedAt: now,
         };
@@ -354,7 +368,21 @@ export const useFlashcardStore = create<FlashcardState>()(
         }));
       },
 
-      addReadingWordToDeck: (passageId, word, translation, sentence) => {
+      saveReadingTranslation: (passageId, key, translation) => set((s) => ({
+        readingPassages: s.readingPassages.map(passage => passage.id === passageId
+          ? {
+              ...passage,
+              translations: {
+                ...(passage.translations ?? {}),
+                [key]: translation,
+              },
+              updatedAt: new Date(),
+            }
+          : passage
+        ),
+      })),
+
+      addReadingWordToDeck: (passageId, word, translation, sentence, details) => {
         const passage = get().readingPassages.find(p => p.id === passageId);
         if (!passage) return null;
         const normalized = word.trim().toLocaleLowerCase();
@@ -363,17 +391,37 @@ export const useFlashcardStore = create<FlashcardState>()(
           c.deckId === passage.deckId &&
           c.germanWord.trim().toLocaleLowerCase() === normalized
         );
-        if (existing) return existing;
+        if (existing) {
+          if (details) {
+            const note = buildReadingCardNote(details);
+            set((s) => ({
+              cards: s.cards.map(card => card.id === existing.id
+                ? {
+                    ...card,
+                    englishMeaning: translation.trim(),
+                    germanExample: (details.exampleGerman || sentence).trim(),
+                    englishExample: (details.exampleEnglish || '').trim(),
+                    notes: note || card.notes,
+                    updatedAt: new Date(),
+                  }
+                : card
+              ),
+            }));
+            return get().cards.find(card => card.id === existing.id) ?? existing;
+          }
+          return existing;
+        }
 
         const now = new Date();
+        const note = buildReadingCardNote(details);
         const card: Card = {
           id: generateId(),
           deckId: passage.deckId,
           germanWord: word.trim(),
           englishMeaning: translation.trim(),
-          germanExample: sentence.trim(),
-          englishExample: '',
-          notes: '',
+          germanExample: (details?.exampleGerman || sentence).trim(),
+          englishExample: (details?.exampleEnglish || '').trim(),
+          notes: note,
           generatedExamples: [],
           state: 'new',
           template: 'german-to-english',
@@ -461,6 +509,10 @@ export const useFlashcardStore = create<FlashcardState>()(
           deckId: '', stateBefore: 'review', ...l,
         }));
         state.readingPassages = deserializeDates(state.readingPassages ?? [], ['createdAt', 'updatedAt']);
+        state.readingPassages = state.readingPassages.map((p: any) => ({
+          translations: {},
+          ...p,
+        }));
         state.todos = deserializeDates(state.todos ?? [], ['createdAt', 'updatedAt']);
         if (!state.newCardsIntroducedToday) state.newCardsIntroducedToday = {};
         if (!state.newCardDateKey) state.newCardDateKey = '';

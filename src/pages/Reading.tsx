@@ -12,11 +12,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useFlashcardStore } from '@/store/flashcardStore';
 import { cn } from '@/lib/utils';
-import type { ReadingPassage, ReadingQuestion } from '@/types/flashcard';
+import type { ReadingPassage, ReadingQuestion, ReadingTranslation } from '@/types/flashcard';
 
 type TranslationState = {
   word: string;
   translation: string;
+  contextualMeaning: string;
+  literalMeaning: string;
+  partOfSpeech: string;
+  usage: string;
+  exampleGerman: string;
+  exampleEnglish: string;
+  note: string;
   provider: string;
   sentence: string;
   loading: boolean;
@@ -25,7 +32,7 @@ type TranslationState = {
   anchor: { x: number; y: number };
 };
 
-type CachedTranslation = { translation: string; provider: string };
+type CachedTranslation = ReadingTranslation;
 
 const WORD_PATTERN = /^[A-Za-zÄÖÜäöüß]+(?:[-'][A-Za-zÄÖÜäöüß]+)?$/;
 
@@ -63,6 +70,7 @@ export default function Reading() {
     cards,
     createReadingPassage,
     deleteReadingPassage,
+    saveReadingTranslation,
     addReadingWordToDeck,
     removeReadingWordFromDeck,
   } = useFlashcardStore();
@@ -131,29 +139,61 @@ export default function Reading() {
     if (!query) return;
 
     const cacheKey = query.toLocaleLowerCase();
-    const cached = translationCache[cacheKey];
+    const transientCacheKey = `${selectedPassage.id}:${cacheKey}`;
+    const cached = selectedPassage.translations?.[cacheKey] ?? translationCache[transientCacheKey];
     const sentence = findSentence(selectedPassage.text, query);
 
     setTranslation({
       word: query,
       translation: cached?.translation ?? '',
-      provider: cached ? cached.provider : 'MyMemory',
-      sentence,
+      contextualMeaning: cached?.contextualMeaning ?? cached?.translation ?? '',
+      literalMeaning: cached?.literalMeaning ?? '',
+      partOfSpeech: cached?.partOfSpeech ?? '',
+      usage: cached?.usage ?? '',
+      exampleGerman: cached?.exampleGerman ?? '',
+      exampleEnglish: cached?.exampleEnglish ?? '',
+      note: cached?.note ?? '',
+      provider: cached ? cached.provider : 'Groq tutor',
+      sentence: cached?.sentence || sentence,
       loading: !cached,
       saved: savedWords.has(cacheKey),
       anchor,
     });
 
     try {
-      const translated = cached ?? await fetchTranslation(query);
-      setTranslationCache(prev => ({ ...prev, [cacheKey]: translated }));
-      const existing = savedWords.has(cacheKey);
-      const saved = autoSaveWords ? Boolean(addReadingWordToDeck(selectedPassage.id, query, translated.translation, sentence)) : existing;
-      setTranslation({
-        word: query,
+      const translated = cached ?? await fetchTranslation(query, sentence, selectedPassage.text);
+      const enriched: ReadingTranslation = {
+        term: translated.term || query,
         translation: translated.translation,
+        contextualMeaning: translated.contextualMeaning || translated.translation,
+        literalMeaning: translated.literalMeaning || '',
+        partOfSpeech: translated.partOfSpeech || '',
+        usage: translated.usage || '',
+        exampleGerman: translated.exampleGerman || '',
+        exampleEnglish: translated.exampleEnglish || '',
+        note: translated.note || '',
         provider: translated.provider,
         sentence,
+        createdAt: cached?.createdAt ?? new Date().toISOString(),
+      };
+      if (!cached) saveReadingTranslation(selectedPassage.id, cacheKey, enriched);
+      setTranslationCache(prev => ({ ...prev, [transientCacheKey]: enriched }));
+      const existing = savedWords.has(cacheKey);
+      const saved = autoSaveWords
+        ? Boolean(addReadingWordToDeck(selectedPassage.id, query, enriched.contextualMeaning, sentence, enriched))
+        : existing;
+      setTranslation({
+        word: query,
+        translation: enriched.translation,
+        contextualMeaning: enriched.contextualMeaning,
+        literalMeaning: enriched.literalMeaning,
+        partOfSpeech: enriched.partOfSpeech,
+        usage: enriched.usage,
+        exampleGerman: enriched.exampleGerman,
+        exampleEnglish: enriched.exampleEnglish,
+        note: enriched.note,
+        provider: enriched.provider,
+        sentence: enriched.sentence,
         loading: false,
         saved,
         anchor,
@@ -165,7 +205,14 @@ export default function Reading() {
       setTranslation({
         word: query,
         translation: '',
-        provider: 'MyMemory',
+        contextualMeaning: '',
+        literalMeaning: '',
+        partOfSpeech: '',
+        usage: '',
+        exampleGerman: '',
+        exampleEnglish: '',
+        note: '',
+        provider: 'Groq tutor',
         sentence,
         loading: false,
         saved: savedWords.has(cacheKey),
@@ -177,7 +224,13 @@ export default function Reading() {
 
   function saveCurrentTranslation() {
     if (!selectedPassage || !translation || !translation.translation || translation.error) return;
-    const card = addReadingWordToDeck(selectedPassage.id, translation.word, translation.translation, translation.sentence);
+    const card = addReadingWordToDeck(
+      selectedPassage.id,
+      translation.word,
+      translation.contextualMeaning || translation.translation,
+      translation.sentence,
+      translation
+    );
     if (!card) return;
     setTranslation(prev => prev ? { ...prev, saved: true } : prev);
     toast.success('Saved to linked deck');
@@ -351,11 +404,37 @@ export default function Reading() {
   );
 }
 
-async function fetchTranslation(word: string): Promise<{ translation: string; provider: string }> {
-  const res = await fetch(`/api/translate-word?q=${encodeURIComponent(word)}`);
+async function fetchTranslation(word: string, sentence: string, passage: string): Promise<{
+  term: string;
+  translation: string;
+  contextualMeaning: string;
+  literalMeaning: string;
+  partOfSpeech: string;
+  usage: string;
+  exampleGerman: string;
+  exampleEnglish: string;
+  note: string;
+  provider: string;
+}> {
+  const res = await fetch('/api/translate-word', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: word, sentence, passage }),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Translation error ${res.status}`);
-  return { translation: data.translation, provider: data.provider ?? 'MyMemory' };
+  return {
+    term: data.term ?? word,
+    translation: data.translation ?? data.contextualMeaning ?? '',
+    contextualMeaning: data.contextualMeaning ?? data.translation ?? '',
+    literalMeaning: data.literalMeaning ?? '',
+    partOfSpeech: data.partOfSpeech ?? '',
+    usage: data.usage ?? '',
+    exampleGerman: data.exampleGerman ?? '',
+    exampleEnglish: data.exampleEnglish ?? '',
+    note: data.note ?? '',
+    provider: data.provider ?? 'Groq tutor',
+  };
 }
 
 function ReadableText({
@@ -476,12 +555,44 @@ function TranslationBubble({
         <p className="mt-3 text-sm text-destructive">{state.error}</p>
       ) : (
         <div className="mt-3 space-y-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">English</p>
-            <p className="mt-1 text-base font-medium">{state.translation}</p>
+          <div className="rounded-md border bg-background p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meaning here</p>
+            <p className="mt-1 text-base font-semibold leading-snug">{state.contextualMeaning || state.translation}</p>
+            {(state.literalMeaning || state.partOfSpeech) && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {state.literalMeaning && (
+                  <Badge variant="outline" className="rounded-full">base: {state.literalMeaning}</Badge>
+                )}
+                {state.partOfSpeech && (
+                  <Badge variant="secondary" className="rounded-full">{state.partOfSpeech}</Badge>
+                )}
+              </div>
+            )}
           </div>
+
+          {state.usage && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mostly used for</p>
+              <p className="mt-1 text-sm leading-relaxed">{state.usage}</p>
+            </div>
+          )}
+
+          {(state.exampleGerman || state.exampleEnglish) && (
+            <div className="rounded-md bg-primary/[0.04] p-3 text-sm leading-relaxed">
+              <p className="font-medium">{state.exampleGerman}</p>
+              {state.exampleEnglish && <p className="mt-1 text-muted-foreground">"{state.exampleEnglish}"</p>}
+            </div>
+          )}
+
+          {state.note && (
+            <p className="rounded-md bg-muted/45 p-3 text-sm leading-relaxed text-muted-foreground">{state.note}</p>
+          )}
+
           {state.sentence && (
-            <p className="rounded-md bg-background p-3 text-sm leading-relaxed text-muted-foreground">"{state.sentence}"</p>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source sentence</p>
+              <p className="mt-1 rounded-md bg-background p-3 text-sm leading-relaxed text-muted-foreground">"{state.sentence}"</p>
+            </div>
           )}
           <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">

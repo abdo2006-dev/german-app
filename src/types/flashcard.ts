@@ -129,12 +129,27 @@ export interface ReadingQuestion {
   difficulty: 'detail' | 'inference' | 'main-idea' | 'vocabulary';
 }
 
+export interface ReadingTranslation {
+  term: string;
+  contextualMeaning: string;
+  literalMeaning: string;
+  partOfSpeech: string;
+  usage: string;
+  exampleGerman: string;
+  exampleEnglish: string;
+  note: string;
+  provider: string;
+  sentence: string;
+  createdAt: string;
+}
+
 export interface ReadingPassage {
   id: string;
   title: string;
   text: string;
   deckId: string;
   questions: ReadingQuestion[];
+  translations: Record<string, ReadingTranslation>;
   createdAt: Date;
   updatedAt: Date;
 }
