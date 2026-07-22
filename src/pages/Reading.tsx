@@ -136,7 +136,10 @@ export default function Reading() {
           body: JSON.stringify({ imageData }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `OCR error ${res.status}`);
+        if (!res.ok) {
+          const rateLimited = res.status === 429 || String(data.error ?? '').includes('429');
+          throw new Error(rateLimited ? 'OCR is busy right now. Wait a moment, then try again.' : data.error || `OCR error ${res.status}`);
+        }
         extracted.push({
           title: String(data.title ?? '').trim(),
           text: String(data.text ?? '').trim(),
@@ -378,8 +381,6 @@ export default function Reading() {
               <div className="space-y-1.5">
                 <Label>Text</Label>
                 <div
-                  role="button"
-                  tabIndex={0}
                   onDragEnter={(event) => {
                     event.preventDefault();
                     setDraggingImage(true);
@@ -391,65 +392,73 @@ export default function Reading() {
                     }
                   }}
                   onDrop={handleScreenshotDrop}
-                  onPaste={handleScreenshotPaste}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      document.getElementById('reading-screenshot-upload')?.click();
-                    }
-                  }}
                   className={cn(
-                    'rounded-md border border-dashed bg-muted/20 p-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary',
+                    'rounded-md border bg-muted/15 p-3 transition-colors',
                     draggingImage && 'border-primary bg-primary/5',
                     extractingImage && 'pointer-events-none opacity-80'
                   )}
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="rounded-md border bg-background p-2">
-                        {extractingImage ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <FileImage className="h-5 w-5 text-primary" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Extract from screenshots</p>
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          Drag images here, paste a screenshot anywhere in this form, or upload multiple images.
-                        </p>
-                      </div>
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-md border bg-background p-1.5">
+                      {extractingImage ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <FileImage className="h-4 w-4 text-primary" />}
                     </div>
-                    <div>
-                      <input
-                        id="reading-screenshot-upload"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(event) => {
-                          void extractFromScreenshots(event.target.files);
-                          event.target.value = '';
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={extractingImage}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          document.getElementById('reading-screenshot-upload')?.click();
-                        }}
-                        className="w-full gap-2 sm:w-auto"
-                      >
-                        {extractingImage ? 'Extracting...' : 'Choose Images'}
-                      </Button>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Extract screenshots</p>
+                      <p className="text-xs text-muted-foreground">Drag, paste, or choose multiple images.</p>
                     </div>
                   </div>
+
+                  <input
+                    id="reading-screenshot-upload"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      void extractFromScreenshots(event.target.files);
+                      event.target.value = '';
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={extractingImage}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      document.getElementById('reading-screenshot-upload')?.click();
+                    }}
+                    className="mt-3 w-full"
+                  >
+                    {extractingImage ? 'Extracting...' : 'Choose Images'}
+                  </Button>
+
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onPaste={handleScreenshotPaste}
+                    onClick={() => document.getElementById('reading-screenshot-upload')?.click()}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        document.getElementById('reading-screenshot-upload')?.click();
+                      }
+                    }}
+                    className={cn(
+                      'mt-3 rounded-md border border-dashed bg-background/65 px-3 py-2 text-center text-xs text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary',
+                      draggingImage && 'border-primary bg-primary/5 text-primary'
+                    )}
+                  >
+                    Drop screenshots here or focus this area and paste
+                  </div>
+
                   {imageExtractError && (
-                    <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm text-destructive">
+                    <p className="mt-3 rounded-md border border-amber-200 bg-amber-50/80 p-2 text-sm leading-relaxed text-amber-900">
                       {imageExtractError}
                     </p>
                   )}
                   {imageExtractNote && (
-                    <p className="mt-3 rounded-md border border-primary/20 bg-primary/5 p-2 text-sm text-muted-foreground">
+                    <p className="mt-3 rounded-md border bg-background p-2 text-sm leading-relaxed text-muted-foreground">
                       {imageExtractNote}
                     </p>
                   )}
