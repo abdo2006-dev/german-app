@@ -18,6 +18,7 @@ import ShehataA2 from "./pages/ShehataA2";
 import SpeakingTopics from "./pages/SpeakingTopics";
 import GermanHelper from "./pages/GermanHelper";
 import Reading from "./pages/Reading";
+import Translator from "./pages/Translator";
 import TodoPage from "./pages/Todo";
 import NotFound from "./pages/NotFound";
 
@@ -48,6 +49,7 @@ const App = () => {
               <Route path="/grammar/:lessonId" element={<GrammarLesson />} />
               <Route path="/speaking" element={<SpeakingTopics />} />
               <Route path="/helper" element={<GermanHelper />} />
+              <Route path="/translator" element={<Translator />} />
               <Route path="/reading" element={<Reading />} />
               <Route path="/todo" element={<TodoPage />} />
               <Route path="*" element={<NotFound />} />
