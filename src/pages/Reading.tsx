@@ -759,6 +759,8 @@ function TranslationBubble({
   onClose: () => void;
 }) {
   const meaning = state.contextualMeaning || state.translation;
+  const isPhraseSelection = state.grammar.kind === 'phrase' || /\s/.test(state.word.trim());
+  const showStudyDetails = !isPhraseSelection;
   const grammarItems = [
     state.grammar.infinitive
       ? { label: 'Infinitive', value: state.grammar.infinitive }
@@ -822,21 +824,21 @@ function TranslationBubble({
             )}
           </div>
 
-          {state.usage && (
+          {showStudyDetails && state.usage && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mostly used for</p>
               <p className="mt-1 text-sm leading-relaxed">{state.usage}</p>
             </div>
           )}
 
-          {(state.exampleGerman || state.exampleEnglish) && (
+          {showStudyDetails && (state.exampleGerman || state.exampleEnglish) && (
             <div className="rounded-md bg-primary/[0.04] p-3 text-sm leading-relaxed">
               <p className="font-medium">{state.exampleGerman}</p>
               {state.exampleEnglish && <p className="mt-1 text-muted-foreground">"{state.exampleEnglish}"</p>}
             </div>
           )}
 
-          {(state.memoryHook || state.memoryImage || state.recallPrompt) && (
+          {showStudyDetails && (state.memoryHook || state.memoryImage || state.recallPrompt) && (
             <div className="rounded-md border border-amber-200 bg-amber-50/70 p-3 text-sm leading-relaxed">
               <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Memory spark</p>
               {state.memoryHook && <p className="mt-1 font-medium text-amber-950">{state.memoryHook}</p>}
@@ -849,7 +851,7 @@ function TranslationBubble({
             </div>
           )}
 
-          {state.note && (
+          {showStudyDetails && state.note && (
             <p className="rounded-md bg-muted/45 p-3 text-sm leading-relaxed text-muted-foreground">{state.note}</p>
           )}
 

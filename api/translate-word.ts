@@ -159,7 +159,7 @@ Return JSON with this exact shape:
 }
 
 Rules:
-- If the selected text is a phrase, translate the phrase as a whole, not word-by-word.
+- If the selected text is a phrase, translate the phrase as a whole, not word-by-word. Set grammar.kind to "phrase" and leave usage, exampleGerman, exampleEnglish, memoryHook, memoryImage, recallPrompt, and note as empty strings unless the phrase itself is a fixed idiom that needs one short note.
 - If the selected word is a conjugated verb, grammar.infinitive must contain the infinitive, e.g. "verhält" -> "sich verhalten".
 - If the selected word is a noun, grammar.article must be der/die/das and grammar.lemma must be the singular noun, e.g. "Aufenthalt" -> article "der", lemma "Aufenthalt".
 - If the word is inflected or conjugated, explain the visible form briefly in note.
