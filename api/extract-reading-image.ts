@@ -40,26 +40,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(413).json({ error: 'Image is too large. Try a smaller screenshot or crop the page first.' });
   }
 
-  const prompt = `Extract the German reading text from this screenshot for a language-learning app.
+  const prompt = `Transcribe the visible German text from this screenshot for a language-learning app.
 
 Return JSON with this exact shape:
 {
   "title": "main title if visible, otherwise empty string",
-  "text": "clean extracted German text",
+  "text": "verbatim German text transcription",
   "layoutNotes": "short note about table/columns/images, if relevant"
 }
 
 Rules:
-- Preserve the reading order.
-- If the image contains a table, convert it into readable plain text using headings and rows.
-- For two-column comparison tables, label each row clearly, for example:
-  Früher: ...
-  Heute: ...
+- Preserve the wording exactly as visible. Do not rewrite, simplify, paraphrase, or normalize the text.
+- Preserve the original reading order, line breaks, headings, and table/column structure as much as plain text allows.
+- If the image contains a table, transcribe visible headers and cells in order. Use tabs or repeated spaces between columns, but do not add labels or words that are not visible.
 - Do not translate.
 - Do not summarize.
-- Keep German punctuation, umlauts, quotation marks, and paragraph breaks.
+- Keep German punctuation, umlauts, quotation marks, capitalization, and paragraph breaks.
 - Ignore decorative images, page chrome, close buttons, and line numbers.
-- If a word is split across a line break, join it correctly when obvious.`;
+- If a word is visibly split across a line break with a hyphen, keep the visible hyphenation.`;
 
   try {
     const groqRes = await fetch(GROQ_API_URL, {

@@ -150,7 +150,7 @@ export default function Reading() {
       const firstTitle = extracted.find(item => item.title)?.title;
       if (!title.trim() && firstTitle) setTitle(firstTitle);
       const combinedText = extracted
-        .map((item, index) => files.length > 1 ? `[Screenshot ${index + 1}]\n${item.text}` : item.text)
+        .map((item) => item.text)
         .filter(Boolean)
         .join('\n\n');
 
@@ -669,7 +669,7 @@ function ReadableText({
   }
 
   return (
-    <div className="rounded-md border bg-background p-5 text-lg leading-9" onMouseUp={handleSelection}>
+    <div className="whitespace-pre-wrap rounded-md border bg-background p-5 text-lg leading-9" onMouseUp={handleSelection}>
       {text.split(/\n{2,}/).map((paragraph, paragraphIndex) => (
         <p key={paragraphIndex} className="mb-4 last:mb-0">
           {tokenize(paragraph).map((token, index) => {
@@ -719,22 +719,16 @@ function TranslationBubble({
   onRemove: () => void;
   onClose: () => void;
 }) {
+  const meaning = state.contextualMeaning || state.translation;
+
   return (
-    <div
-      className="fixed z-50 w-[min(360px,calc(100vw-24px))] rounded-md border border-primary/20 bg-popover p-4 text-popover-foreground shadow-xl"
-      style={{
-        left: Math.min(Math.max(state.anchor.x, 180), window.innerWidth - 180),
-        top: state.anchor.y,
-        transform: 'translate(-50%, calc(-100% - 12px))',
-      }}
-    >
-      <div className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-primary/20 bg-popover" />
+    <div className="fixed bottom-4 left-4 right-4 z-50 max-h-[min(78vh,720px)] overflow-hidden rounded-md border border-primary/20 bg-popover text-popover-foreground shadow-2xl md:left-auto md:w-[430px]">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 p-4 pb-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Selected text</p>
           <p className="mt-1 text-lg font-bold leading-snug">{state.word}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 p-4 pb-2">
           <Badge variant="secondary">{state.loading ? 'Translating...' : state.provider}</Badge>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
             ×
@@ -742,17 +736,17 @@ function TranslationBubble({
         </div>
       </div>
       {state.loading ? (
-        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 px-4 pb-4 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Looking up translation
         </div>
       ) : state.error ? (
-        <p className="mt-3 text-sm text-destructive">{state.error}</p>
+        <p className="px-4 pb-4 text-sm text-destructive">{state.error}</p>
       ) : (
-        <div className="mt-3 space-y-3">
-          <div className="rounded-md border bg-background p-3">
+        <div className="max-h-[calc(min(78vh,720px)-76px)] space-y-3 overflow-y-auto px-4 pb-4">
+          <div className="rounded-md border border-primary/25 bg-primary/[0.06] p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meaning here</p>
-            <p className="mt-1 text-base font-semibold leading-snug">{state.contextualMeaning || state.translation}</p>
+            <p className="mt-1 text-xl font-bold leading-snug text-foreground">{meaning}</p>
             {(state.literalMeaning || state.partOfSpeech) && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {state.literalMeaning && (
