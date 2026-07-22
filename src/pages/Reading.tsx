@@ -23,6 +23,9 @@ type TranslationState = {
   usage: string;
   exampleGerman: string;
   exampleEnglish: string;
+  memoryHook: string;
+  memoryImage: string;
+  recallPrompt: string;
   note: string;
   provider: string;
   sentence: string;
@@ -152,6 +155,9 @@ export default function Reading() {
       usage: cached?.usage ?? '',
       exampleGerman: cached?.exampleGerman ?? '',
       exampleEnglish: cached?.exampleEnglish ?? '',
+      memoryHook: cached?.memoryHook ?? '',
+      memoryImage: cached?.memoryImage ?? '',
+      recallPrompt: cached?.recallPrompt ?? '',
       note: cached?.note ?? '',
       provider: cached ? cached.provider : 'Groq tutor',
       sentence: cached?.sentence || sentence,
@@ -171,6 +177,9 @@ export default function Reading() {
         usage: translated.usage || '',
         exampleGerman: translated.exampleGerman || '',
         exampleEnglish: translated.exampleEnglish || '',
+        memoryHook: translated.memoryHook || '',
+        memoryImage: translated.memoryImage || '',
+        recallPrompt: translated.recallPrompt || '',
         note: translated.note || '',
         provider: translated.provider,
         sentence,
@@ -191,6 +200,9 @@ export default function Reading() {
         usage: enriched.usage,
         exampleGerman: enriched.exampleGerman,
         exampleEnglish: enriched.exampleEnglish,
+        memoryHook: enriched.memoryHook,
+        memoryImage: enriched.memoryImage,
+        recallPrompt: enriched.recallPrompt,
         note: enriched.note,
         provider: enriched.provider,
         sentence: enriched.sentence,
@@ -211,6 +223,9 @@ export default function Reading() {
         usage: '',
         exampleGerman: '',
         exampleEnglish: '',
+        memoryHook: '',
+        memoryImage: '',
+        recallPrompt: '',
         note: '',
         provider: 'Groq tutor',
         sentence,
@@ -413,6 +428,9 @@ async function fetchTranslation(word: string, sentence: string, passage: string)
   usage: string;
   exampleGerman: string;
   exampleEnglish: string;
+  memoryHook: string;
+  memoryImage: string;
+  recallPrompt: string;
   note: string;
   provider: string;
 }> {
@@ -432,6 +450,9 @@ async function fetchTranslation(word: string, sentence: string, passage: string)
     usage: data.usage ?? '',
     exampleGerman: data.exampleGerman ?? '',
     exampleEnglish: data.exampleEnglish ?? '',
+    memoryHook: data.memoryHook ?? '',
+    memoryImage: data.memoryImage ?? '',
+    recallPrompt: data.recallPrompt ?? '',
     note: data.note ?? '',
     provider: data.provider ?? 'Groq tutor',
   };
@@ -581,6 +602,19 @@ function TranslationBubble({
             <div className="rounded-md bg-primary/[0.04] p-3 text-sm leading-relaxed">
               <p className="font-medium">{state.exampleGerman}</p>
               {state.exampleEnglish && <p className="mt-1 text-muted-foreground">"{state.exampleEnglish}"</p>}
+            </div>
+          )}
+
+          {(state.memoryHook || state.memoryImage || state.recallPrompt) && (
+            <div className="rounded-md border border-amber-200 bg-amber-50/70 p-3 text-sm leading-relaxed">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Memory spark</p>
+              {state.memoryHook && <p className="mt-1 font-medium text-amber-950">{state.memoryHook}</p>}
+              {state.memoryImage && <p className="mt-2 text-amber-950/85">{state.memoryImage}</p>}
+              {state.recallPrompt && (
+                <p className="mt-2 rounded border border-amber-200 bg-background/70 px-2.5 py-2 text-amber-950">
+                  {state.recallPrompt}
+                </p>
+              )}
             </div>
           )}
 

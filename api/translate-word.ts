@@ -42,6 +42,9 @@ async function fetchFallbackTranslation(term: string) {
     usage: '',
     exampleGerman: '',
     exampleEnglish: '',
+    memoryHook: '',
+    memoryImage: '',
+    recallPrompt: '',
     note: 'Fallback dictionary translation. For better nuance, try again when the Groq tutor is available.',
     provider: 'MyMemory fallback',
   };
@@ -58,6 +61,9 @@ function normalizeResult(raw: any, term: string) {
     usage: String(raw?.usage || '').trim(),
     exampleGerman: String(raw?.exampleGerman || '').trim(),
     exampleEnglish: String(raw?.exampleEnglish || '').trim(),
+    memoryHook: String(raw?.memoryHook || '').trim(),
+    memoryImage: String(raw?.memoryImage || '').trim(),
+    recallPrompt: String(raw?.recallPrompt || '').trim(),
     note: String(raw?.note || '').trim(),
     provider: 'Groq contextual tutor',
   };
@@ -112,12 +118,17 @@ Return JSON with this exact shape:
   "usage": "what this word/phrase is mostly used for, including register or common context",
   "exampleGerman": "one natural German example sentence using this word/phrase",
   "exampleEnglish": "English translation of exampleGerman",
+  "memoryHook": "one short sticky memory cue that links the term, meaning, and context without fake etymology",
+  "memoryImage": "one vivid mental image or micro-scene that helps remember the word",
+  "recallPrompt": "one quick self-test prompt, like 'When you see X in this sentence, what does it mean?'",
   "note": "brief explanation of why this meaning fits the given sentence"
 }
 
 Rules:
 - If the selected text is a phrase, translate the phrase as a whole, not word-by-word.
 - If the word is inflected or conjugated, explain the base form in partOfSpeech or note.
+- Make memoryHook and memoryImage emotionally or visually memorable, but do not claim false cognates or invented etymology.
+- The recallPrompt should force active recall in under 10 seconds.
 - Keep explanations practical for a learner who wants to save this as a flashcard.
 - Do not invent context outside the passage.`;
 

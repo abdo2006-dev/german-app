@@ -131,12 +131,16 @@ export interface ReadingQuestion {
 
 export interface ReadingTranslation {
   term: string;
+  translation: string;
   contextualMeaning: string;
   literalMeaning: string;
   partOfSpeech: string;
   usage: string;
   exampleGerman: string;
   exampleEnglish: string;
+  memoryHook: string;
+  memoryImage: string;
+  recallPrompt: string;
   note: string;
   provider: string;
   sentence: string;

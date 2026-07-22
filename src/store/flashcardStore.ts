@@ -44,6 +44,9 @@ function buildReadingCardNote(details?: Partial<ReadingTranslation>): string {
     details.literalMeaning ? `Literal/base meaning: ${details.literalMeaning}` : '',
     details.partOfSpeech ? `Part of speech: ${details.partOfSpeech}` : '',
     details.usage ? `Mostly used for: ${details.usage}` : '',
+    details.memoryHook ? `Memory hook: ${details.memoryHook}` : '',
+    details.memoryImage ? `Mental image: ${details.memoryImage}` : '',
+    details.recallPrompt ? `Recall prompt: ${details.recallPrompt}` : '',
     details.note ? `Context note: ${details.note}` : '',
   ].filter(Boolean);
   return rows.join('\n\n');
