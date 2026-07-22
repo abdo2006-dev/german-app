@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, BookOpen, CheckCircle2, ExternalLink, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { AlertCircle, BookOpen, CheckCircle2, ExternalLink, FileImage, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -83,6 +83,9 @@ export default function Reading() {
   const [selectedPassageId, setSelectedPassageId] = useState<string | null>(readingPassages[0]?.id ?? null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [extractingImage, setExtractingImage] = useState(false);
+  const [imageExtractError, setImageExtractError] = useState<string | null>(null);
+  const [imageExtractNote, setImageExtractNote] = useState<string | null>(null);
   const [translation, setTranslation] = useState<TranslationState | null>(null);
   const [translationCache, setTranslationCache] = useState<Record<string, CachedTranslation>>({});
   const [autoSaveWords, setAutoSaveWords] = useState(false);
@@ -100,6 +103,43 @@ export default function Reading() {
     () => new Set(selectedDeckCards.map(card => card.germanWord.trim().toLocaleLowerCase())),
     [selectedDeckCards]
   );
+
+  async function extractFromScreenshot(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageExtractError('Upload an image screenshot.');
+      return;
+    }
+    if (file.size > 3_400_000) {
+      setImageExtractError('This screenshot is too large. Crop it tighter or use a smaller image.');
+      return;
+    }
+
+    setExtractingImage(true);
+    setImageExtractError(null);
+    setImageExtractNote(null);
+
+    try {
+      const imageData = await readFileAsDataUrl(file);
+      const res = await fetch('/api/extract-reading-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `OCR error ${res.status}`);
+
+      if (!title.trim() && data.title) setTitle(data.title);
+      setText(data.text ?? '');
+      setImageExtractNote(data.layoutNotes || 'Screenshot text extracted. Check the text box before creating the reading.');
+      setCreateError(null);
+      toast.success('Screenshot text extracted');
+    } catch (err: any) {
+      setImageExtractError(err.message ?? 'Could not extract text from this screenshot.');
+    } finally {
+      setExtractingImage(false);
+    }
+  }
 
   async function createPassage() {
     if (text.trim().length < 80) {
@@ -298,6 +338,47 @@ export default function Reading() {
               </div>
               <div className="space-y-1.5">
                 <Label>Text</Label>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Extract from screenshot</p>
+                      <p className="text-xs text-muted-foreground">Best for PDF pages, tables, and messy copied text.</p>
+                    </div>
+                    <div>
+                      <input
+                        id="reading-screenshot-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          void extractFromScreenshot(event.target.files?.[0]);
+                          event.target.value = '';
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={extractingImage}
+                        onClick={() => document.getElementById('reading-screenshot-upload')?.click()}
+                        className="w-full gap-2 sm:w-auto"
+                      >
+                        {extractingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileImage className="h-4 w-4" />}
+                        {extractingImage ? 'Extracting...' : 'Upload Screenshot'}
+                      </Button>
+                    </div>
+                  </div>
+                  {imageExtractError && (
+                    <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm text-destructive">
+                      {imageExtractError}
+                    </p>
+                  )}
+                  {imageExtractNote && (
+                    <p className="mt-3 rounded-md border border-primary/20 bg-primary/5 p-2 text-sm text-muted-foreground">
+                      {imageExtractNote}
+                    </p>
+                  )}
+                </div>
                 <Textarea
                   value={text}
                   onChange={(event) => setText(event.target.value)}
@@ -417,6 +498,15 @@ export default function Reading() {
       </div>
     </div>
   );
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Could not read this image file.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function fetchTranslation(word: string, sentence: string, passage: string): Promise<{
